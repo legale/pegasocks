@@ -496,7 +496,7 @@ static bool pgs_cryptor_encrypt_gcm(pgs_cryptor_t *ptr,
 		return false;
 	}
 	if (mbedtls_gcm_finish(ptr->ctx, last_block, sizeof(last_block), &tmp_len,
-				tag, ptr->tag_len)) {
+				(unsigned char *)tag, ptr->tag_len)) {
 		return false;
 	}
 	if (tmp_len > 0) {
@@ -528,7 +528,7 @@ static bool pgs_cryptor_decrypt_gcm(pgs_cryptor_t *ptr,
 		return false;
 	}
 	if (mbedtls_gcm_finish(ptr->ctx, last_block, sizeof(last_block), &tmp_len,
-				tag, ptr->tag_len)) {
+				(unsigned char *)tag, ptr->tag_len)) {
 		return false;
 	}
 	if (tmp_len > 0) {
