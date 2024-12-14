@@ -484,7 +484,7 @@ static bool pgs_cryptor_encrypt_gcm(pgs_cryptor_t *ptr,
 				    uint8_t *ciphertext, size_t *ciphertext_len)
 {
 	size_t out_len = 0, tmp_len = 0;
-	unsigned char last_block[8] = {0};
+	unsigned char last_block[16] = {0};
 	
 	if (mbedtls_gcm_starts(ptr->ctx, MBEDTLS_GCM_ENCRYPT, ptr->iv,
 			       ptr->iv_len)) {
@@ -517,7 +517,7 @@ static bool pgs_cryptor_decrypt_gcm(pgs_cryptor_t *ptr,
 				    uint8_t *plaintext, size_t *plaintext_len)
 {
 	size_t out_len = 0, tmp_len = 0;
-	unsigned char last_block[8] = {0};
+	unsigned char last_block[16] = {0};
 
 	if (mbedtls_gcm_starts(ptr->ctx, MBEDTLS_GCM_DECRYPT, ptr->iv,ptr->iv_len) 
 			&& mbedtls_gcm_update_ad(ptr->ctx, tag, ptr->tag_len)) {
