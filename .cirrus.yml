@@ -76,9 +76,9 @@ linux_mbedtls_v3_task: # use master branch of libevent to support mbedtls
         - curl -L https://github.com/libevent/libevent/archive/refs/heads/master.zip -o libevent.zip
         - unzip libevent.zip
         - cd libevent-master && cmake -DCMAKE_BUILD_TYPE=Release . && make install && cd ..
-        - curl -L https://github.com/Mbed-TLS/mbedtls/archive/refs/tags/v3.6.2.zip -o mbedtls.zip
+        - curl -L https://github.com/Mbed-TLS/mbedtls/archive/refs/tags/v3.5.2.zip -o mbedtls.zip
         - unzip mbedtls.zip
-        - cd mbedtls-3.6.2 && cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_TESTING=OFF -DENABLE_PROGRAMS=OFF . && make install && cd ..
+        - cd mbedtls-3.5.2 && cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_TESTING=OFF -DENABLE_PROGRAMS=OFF . && make install && cd ..
     build_default_test_script:
         - mkdir -p build/default
         - cd build/default
