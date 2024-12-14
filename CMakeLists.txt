@@ -332,6 +332,7 @@ if(NOT ${A2X_EXECUTABLE} STREQUAL A2X_EXECUTABLE-NOTFOUND)
 endif()
 
 # tests
+list(APPEND CMAKE_CTEST_ARGUMENTS "--output-on-failure")
 enable_testing()
 add_subdirectory(test)
 
