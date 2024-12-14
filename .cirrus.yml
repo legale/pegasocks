@@ -35,8 +35,8 @@ freebsd_task:
 linux_mbedtls_task: # use master branch of libevent to support mbedtls
     container:
       matrix:
-          - image: ubuntu:18.04
-          - image: ubuntu:20.04
+          - image: ubuntu:24.04
+          - image: ubuntu:22.04
 
     install_script:
         - apt update && apt upgrade -y
