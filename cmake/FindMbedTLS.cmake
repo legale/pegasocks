@@ -1,159 +1,86 @@
-# Copyright 2017-2019 AVSystem <avsystem@avsystem.com>
+# Find the mbedTLS library
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# Input variables:
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+# - `MBEDTLS_INCLUDE_DIR`:   The mbedTLS include directory.
+# - `MBEDTLS_LIBRARY`:       Path to `mbedtls` library.
+# - `MBEDX509_LIBRARY`:      Path to `mbedx509` library.
+# - `MBEDCRYPTO_LIBRARY`:    Path to `mbedcrypto` library.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# Result variables:
+#
+# - `MBEDTLS_FOUND`:         System has mbedTLS.
+# - `MBEDTLS_INCLUDE_DIRS`:  The mbedTLS include directories.
+# - `MBEDTLS_LIBRARIES`:     The mbedTLS library names.
+# - `MBEDTLS_LIBRARY_DIRS`:  The mbedTLS library directories.
+# - `MBEDTLS_PC_REQUIRES`:   The mbedTLS pkg-config packages.
+# - `MBEDTLS_CFLAGS`:        Required compiler flags.
+# - `MBEDTLS_VERSION`:       Version of mbedTLS.
 
-#.rst:
-# FindMbedTLS
-# -----------
-#
-# Find the mbedTLS encryption library.
-#
-# Imported Targets
-# ^^^^^^^^^^^^^^^^
-#
-# This module defines the following :prop_tgt:`IMPORTED` targets:
-#
-# ``mbedtls``
-#   The mbedTLS ``mbedtls`` library, if found.
-# ``mbedcrypto``
-#   The mbedtls ``crypto`` library, if found.
-# ``mbedx509``
-#   The mbedtls ``x509`` library, if found.
-#
-# Result Variables
-# ^^^^^^^^^^^^^^^^
-#
-# This module will set the following variables in your project:
-#
-# ``MBEDTLS_FOUND``
-#   System has the mbedTLS library.
-# ``MBEDTLS_INCLUDE_DIR``
-#   The mbedTLS include directory.
-# ``MBEDTLS_LIBRARY``
-#   The mbedTLS SSL library.
-# ``MBEDTLS_CRYPTO_LIBRARY``
-#   The mbedTLS crypto library.
-# ``MBEDTLS_X509_LIBRARY``
-#   The mbedTLS x509 library.
-# ``MBEDTLS_LIBRARIES``
-#   All mbedTLS libraries.
-# ``MBEDTLS_VERSION``
-#   This is set to ``$major.$minor.$patch``.
-# ``MBEDTLS_VERSION_MAJOR``
-#   Set to major mbedTLS version number.
-# ``MBEDTLS_VERSION_MINOR``
-#   Set to minor mbedTLS version number.
-# ``MBEDTLS_VERSION_PATCH``
-#   Set to patch mbedTLS version number.
-#
-# Hints
-# ^^^^^
-#
-# Set ``MBEDTLS_ROOT_DIR`` to the root directory of an mbedTLS installation.
-# Set ``MBEDTLS_USE_STATIC_LIBS`` to ``TRUE`` to look for static libraries.
-
-if(MBEDTLS_ROOT_DIR)
-    # Disable re-rooting paths in find_path/find_library.
-    # This assumes MBEDTLS_ROOT_DIR is an absolute path.
-    set(_EXTRA_FIND_ARGS "NO_CMAKE_FIND_ROOT_PATH")
+if(DEFINED MBEDTLS_INCLUDE_DIRS AND NOT DEFINED MBEDTLS_INCLUDE_DIR)
+  message(WARNING "MBEDTLS_INCLUDE_DIRS is deprecated, use MBEDTLS_INCLUDE_DIR instead.")
+  set(MBEDTLS_INCLUDE_DIR "${MBEDTLS_INCLUDE_DIRS}")
+  unset(MBEDTLS_INCLUDE_DIRS)
 endif()
 
-find_path(MBEDTLS_INCLUDE_DIR
-          NAMES mbedtls/ssl.h
-          PATH_SUFFIXES include
-          HINTS ${MBEDTLS_ROOT_DIR}
-          ${_EXTRA_FIND_ARGS})
-
-# based on https://github.com/ARMmbed/mbedtls/issues/298
-if(MBEDTLS_INCLUDE_DIR AND EXISTS "${MBEDTLS_INCLUDE_DIR}/mbedtls/version.h")
-    file(STRINGS "${MBEDTLS_INCLUDE_DIR}/mbedtls/version.h" VERSION_STRING_LINE REGEX "^#define MBEDTLS_VERSION_STRING[ \\t\\n\\r]+\"[^\"]*\"$")
-    file(STRINGS "${MBEDTLS_INCLUDE_DIR}/mbedtls/version.h" VERSION_MAJOR_LINE REGEX "^#define MBEDTLS_VERSION_MAJOR[ \\t\\n\\r]+[0-9]+$")
-    file(STRINGS "${MBEDTLS_INCLUDE_DIR}/mbedtls/version.h" VERSION_MINOR_LINE REGEX "^#define MBEDTLS_VERSION_MINOR[ \\t\\n\\r]+[0-9]+$")
-    file(STRINGS "${MBEDTLS_INCLUDE_DIR}/mbedtls/version.h" VERSION_PATCH_LINE REGEX "^#define MBEDTLS_VERSION_PATCH[ \\t\\n\\r]+[0-9]+$")
-
-    string(REGEX REPLACE "^#define MBEDTLS_VERSION_STRING[ \\t\\n\\r]+\"([^\"]*)\"$" "\\1" MBEDTLS_VERSION "${VERSION_STRING_LINE}")
-    string(REGEX REPLACE "^#define MBEDTLS_VERSION_MAJOR[ \\t\\n\\r]+([0-9]+)$" "\\1" MBEDTLS_VERSION_MAJOR "${VERSION_MAJOR_LINE}")
-    string(REGEX REPLACE "^#define MBEDTLS_VERSION_MINOR[ \\t\\n\\r]+([0-9]+)$" "\\1" MBEDTLS_VERSION_MINOR "${VERSION_MINOR_LINE}")
-    string(REGEX REPLACE "^#define MBEDTLS_VERSION_PATCH[ \\t\\n\\r]+([0-9]+)$" "\\1" MBEDTLS_VERSION_PATCH "${VERSION_PATCH_LINE}")
+if(CURL_USE_PKGCONFIG AND
+   NOT DEFINED MBEDTLS_INCLUDE_DIR AND
+   NOT DEFINED MBEDTLS_LIBRARY AND
+   NOT DEFINED MBEDX509_LIBRARY AND
+   NOT DEFINED MBEDCRYPTO_LIBRARY)
+  find_package(PkgConfig QUIET)
+  pkg_check_modules(MBEDTLS "mbedtls")
+  pkg_check_modules(MBEDX509 "mbedx509")
+  pkg_check_modules(MBEDCRYPTO "mbedcrypto")
 endif()
 
-
-if(MBEDTLS_USE_STATIC_LIBS)
-    set(_MBEDTLS_LIB_NAME libmbedtls.a)
-    set(_MBEDTLS_CRYPTO_LIB_NAME libmbedcrypto.a)
-    set(_MBEDTLS_X509_LIB_NAME libmbedx509.a)
+if(MBEDTLS_FOUND AND MBEDX509_FOUND AND MBEDCRYPTO_FOUND)
+  list(APPEND MBEDTLS_LIBRARIES ${MBEDX509_LIBRARIES} ${MBEDCRYPTO_LIBRARIES})
+  list(REMOVE_DUPLICATES MBEDTLS_LIBRARIES)
+  set(MBEDTLS_PC_REQUIRES "mbedtls")
+  string(REPLACE ";" " " MBEDTLS_CFLAGS "${MBEDTLS_CFLAGS}")
+  message(STATUS "Found MbedTLS (via pkg-config): ${MBEDTLS_INCLUDE_DIRS} (found version \"${MBEDTLS_VERSION}\")")
 else()
-    set(_MBEDTLS_LIB_NAME mbedtls)
-    set(_MBEDTLS_CRYPTO_LIB_NAME mbedcrypto)
-    set(_MBEDTLS_X509_LIB_NAME mbedx509)
-endif()
+  find_path(MBEDTLS_INCLUDE_DIR NAMES "mbedtls/ssl.h")
+  find_library(MBEDTLS_LIBRARY NAMES "mbedtls" "libmbedtls")
+  find_library(MBEDX509_LIBRARY NAMES "mbedx509" "libmbedx509")
+  find_library(MBEDCRYPTO_LIBRARY NAMES "mbedcrypto" "libmbedcrypto")
 
-find_library(MBEDTLS_LIBRARY
-             NAMES ${_MBEDTLS_LIB_NAME}
-             PATH_SUFFIXES lib
-             HINTS ${MBEDTLS_ROOT_DIR}
-             ${_EXTRA_FIND_ARGS})
+  unset(MBEDTLS_VERSION CACHE)
+  if(MBEDTLS_INCLUDE_DIR)
+    if(EXISTS "${MBEDTLS_INCLUDE_DIR}/mbedtls/build_info.h")  # 3.x
+      set(_version_header "${MBEDTLS_INCLUDE_DIR}/mbedtls/build_info.h")
+    elseif(EXISTS "${MBEDTLS_INCLUDE_DIR}/mbedtls/version.h")  # 2.x
+      set(_version_header "${MBEDTLS_INCLUDE_DIR}/mbedtls/version.h")
+    else()
+      unset(_version_header)
+    endif()
+    if(_version_header)
+      set(_version_regex "#[\t ]*define[\t ]+MBEDTLS_VERSION_STRING[\t ]+\"([0-9.]+)\"")
+      file(STRINGS "${_version_header}" _version_str REGEX "${_version_regex}")
+      string(REGEX REPLACE "${_version_regex}" "\\1" _version_str "${_version_str}")
+      set(MBEDTLS_VERSION "${_version_str}")
+      unset(_version_regex)
+      unset(_version_str)
+      unset(_version_header)
+    endif()
+  endif()
 
-find_library(MBEDTLS_CRYPTO_LIBRARY
-             NAMES ${_MBEDTLS_CRYPTO_LIB_NAME}
-             PATH_SUFFIXES lib
-             HINTS ${MBEDTLS_ROOT_DIR}
-             ${_EXTRA_FIND_ARGS})
+  include(FindPackageHandleStandardArgs)
+  find_package_handle_standard_args(MbedTLS
+    REQUIRED_VARS
+      MBEDTLS_INCLUDE_DIR
+      MBEDTLS_LIBRARY
+      MBEDX509_LIBRARY
+      MBEDCRYPTO_LIBRARY
+    VERSION_VAR
+      MBEDTLS_VERSION
+  )
 
-find_library(MBEDTLS_X509_LIBRARY
-             NAMES ${_MBEDTLS_X509_LIB_NAME}
-             PATH_SUFFIXES lib
-             HINTS ${MBEDTLS_ROOT_DIR}
-             ${_EXTRA_FIND_ARGS})
+  if(MBEDTLS_FOUND)
+    set(MBEDTLS_INCLUDE_DIRS ${MBEDTLS_INCLUDE_DIR})
+    set(MBEDTLS_LIBRARIES    ${MBEDTLS_LIBRARY} ${MBEDX509_LIBRARY} ${MBEDCRYPTO_LIBRARY})
+  endif()
 
-set(MBEDTLS_LIBRARIES ${MBEDTLS_LIBRARY} ${MBEDTLS_X509_LIBRARY} ${MBEDTLS_CRYPTO_LIBRARY})
-
-if(MBEDTLS_INCLUDE_DIR)
-    set(MBEDTLS_FOUND TRUE)
-endif()
-
-
-include(FindPackageHandleStandardArgs)
-find_package_handle_standard_args(MbedTLS
-                                  FOUND_VAR MBEDTLS_FOUND
-                                  REQUIRED_VARS
-                                      MBEDTLS_INCLUDE_DIR
-                                      MBEDTLS_LIBRARY
-                                      MBEDTLS_CRYPTO_LIBRARY
-                                      MBEDTLS_X509_LIBRARY
-                                      MBEDTLS_LIBRARIES
-                                      MBEDTLS_VERSION
-                                  VERSION_VAR MBEDTLS_VERSION)
-
-
-if(NOT TARGET mbedtls)
-    add_library(mbedtls UNKNOWN IMPORTED)
-    set_target_properties(mbedtls PROPERTIES
-                          INTERFACE_INCLUDE_DIRECTORIES "${MBEDTLS_INCLUDE_DIR}"
-                          IMPORTED_LINK_INTERFACE_LANGUAGES "C"
-                          IMPORTED_LOCATION "${MBEDTLS_LIBRARY}")
-endif()
-
-if(NOT TARGET mbedcrypto)
-    add_library(mbedcrypto UNKNOWN IMPORTED)
-    set_target_properties(mbedcrypto PROPERTIES
-                          IMPORTED_LINK_INTERFACE_LANGUAGES "C"
-                          IMPORTED_LOCATION "${MBEDTLS_CRYPTO_LIBRARY}")
-endif()
-
-if(NOT TARGET mbedx509)
-    add_library(mbedx509 UNKNOWN IMPORTED)
-    set_target_properties(mbedx509 PROPERTIES
-                          IMPORTED_LINK_INTERFACE_LANGUAGES "C"
-                          IMPORTED_LOCATION "${MBEDTLS_X509_LIBRARY}")
+  mark_as_advanced(MBEDTLS_INCLUDE_DIR MBEDTLS_LIBRARY MBEDX509_LIBRARY MBEDCRYPTO_LIBRARY)
 endif()
