@@ -3,9 +3,9 @@ freebsd_task:
         - name: FreeBSD 13.3
           freebsd_instance:
             image: freebsd-13-3-release-amd64
-        - name: FreeBSD 14.2
+        - name: FreeBSD 14.1
           freebsd_instance:
-            image: freebsd-14-2-release-amd64
+            image: freebsd-14-1-release-amd64
     env:
         HOME: /home/testuser
 
