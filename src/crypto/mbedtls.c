@@ -479,36 +479,40 @@ static bool pgs_cryptor_decrypt_gcm(pgs_cryptor_t *ptr,
 #else
 
 static bool pgs_cryptor_encrypt_gcm(pgs_cryptor_t *ptr,
-				    const uint8_t *plaintext,
-				    size_t plaintext_len, uint8_t *tag,
-				    uint8_t *ciphertext, size_t *ciphertext_len)
+                                    const uint8_t *plaintext,
+                                    size_t plaintext_len, uint8_t *tag,
+                                    uint8_t *ciphertext, size_t *ciphertext_len)
 {
-	size_t out_len = 0, tmp_len = 0;
-	unsigned char last_block[16] = {0};
-	
-	if (mbedtls_gcm_starts(ptr->ctx, MBEDTLS_GCM_ENCRYPT, ptr->iv,
-			       ptr->iv_len)) {
-		return false;
-	}
+    size_t out_len = 0, tmp_len = 0;
+    unsigned char last_block[16] = {0};
 
-	if (mbedtls_gcm_update(ptr->ctx, plaintext, plaintext_len, ciphertext,
-				*ciphertext_len, &out_len)) {
-		return false;
-	}
-	if (mbedtls_gcm_finish(ptr->ctx, last_block, sizeof(last_block), &tmp_len,
-				(unsigned char *)tag, ptr->tag_len)) {
-		return false;
-	}
-	if (tmp_len > 0) {
-		if (out_len + tmp_len > *ciphertext_len) {
-			return false;
-		}
-		memcpy(ciphertext + out_len, last_block, tmp_len);
-		out_len += tmp_len;
-	}
+    // Start GCM encryption
+    if (mbedtls_gcm_starts(ptr->ctx, MBEDTLS_GCM_ENCRYPT, ptr->iv, ptr->iv_len) != 0) {
+        return false;
+    }
 
-	*ciphertext_len = out_len;
-	return true;
+    // Encrypt the plaintext
+    if (mbedtls_gcm_update(ptr->ctx, plaintext, plaintext_len, ciphertext, &out_len) != 0) {
+        return false;
+    }
+
+    // Finalize encryption and generate the authentication tag
+    if (mbedtls_gcm_finish(ptr->ctx, last_block, sizeof(last_block), &tmp_len,
+                           tag, ptr->tag_len) != 0) {
+        return false;
+    }
+
+    // Add any residual data from last_block to ciphertext
+    if (tmp_len > 0) {
+        if (out_len + tmp_len > *ciphertext_len) {
+            return false; // Insufficient buffer
+        }
+        memcpy(ciphertext + out_len, last_block, tmp_len);
+        out_len += tmp_len;
+    }
+
+    *ciphertext_len = out_len;
+    return true;
 }
 
 static bool pgs_cryptor_decrypt_gcm(pgs_cryptor_t *ptr,
