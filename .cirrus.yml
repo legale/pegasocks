@@ -63,6 +63,35 @@ linux_mbedtls_task: # use master branch of libevent to support mbedtls
         - make
         - make test
 
+linux_mbedtls_v3_task: # use master branch of libevent to support mbedtls
+    container:
+      matrix:
+          - image: ubuntu:24.04
+
+    install_script:
+        - apt update && apt upgrade -y
+        - DEBIAN_FRONTEND=noninteractive apt install -y unzip git cmake build-essential curl libssl-dev libmbedtls-dev libpcre3-dev
+    prepare_script:
+        - git submodule update --init
+        - curl -L https://github.com/libevent/libevent/archive/refs/heads/master.zip -o libevent.zip
+        - unzip libevent.zip
+        - cd libevent-master && cmake -DCMAKE_BUILD_TYPE=Release . && make install && cd ..
+        - curl -L https://github.com/Mbed-TLS/mbedtls/archive/refs/tags/v3.6.2.zip -o mbedtls.zip
+        - unzip mbedtls.zip
+        - cd mbedtls-3.6.2 && cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_TESTING=OFF -DENABLE_PROGRAMS=OFF . && make install && cd ..
+    build_default_test_script:
+        - mkdir -p build/default
+        - cd build/default
+        - cmake -DUSE_MBEDTLS=ON ../..
+        - make
+        - make test
+    build_acl_test_script:
+        - mkdir -p build/acl
+        - cd build/acl
+        - cmake -DUSE_MBEDTLS=ON -DWITH_ACL=ON ../..
+        - make
+        - make test
+
 linux_openssl_task:
     container:
       matrix:
