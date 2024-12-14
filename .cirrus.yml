@@ -65,8 +65,8 @@ linux_mbedtls_task: # use master branch of libevent to support mbedtls
 linux_openssl_task:
     container:
       matrix:
-          - image: ubuntu:18.04
-          - image: ubuntu:20.04
+          - image: ubuntu:22.04
+          - image: ubuntu:24.04
 
     install_script:
         - apt update && apt upgrade -y
