@@ -238,8 +238,6 @@ void hmac_md5(const uint8_t *key, uint64_t key_len, const uint8_t *data,
 	assert(*out_len == 16);
 }
 
-#if MBEDTLS_VERSION_NUMBER < 0x03000000
-
 int aes_128_cfb_encrypt(const uint8_t *plaintext, int plaintext_len,
 			const uint8_t *key, const uint8_t *iv,
 			uint8_t *ciphertext)
@@ -315,143 +313,6 @@ error:
 	perror("aes_128_cfb_decrypt");
 	return -1;
 }
-
-#else
-
-int aes_128_cfb_encrypt(const uint8_t *plaintext, int plaintext_len,
-                        const uint8_t *key, const uint8_t *iv,
-                        uint8_t *ciphertext)
-{
-    int ciphertext_len = 0;
-    size_t len = 0;
-    size_t total_len = 0;
-    mbedtls_cipher_context_t ctx;
-
-    // Initialize cipher context
-    mbedtls_cipher_init(&ctx);
-
-    // Get cipher information for AES-128-CFB128
-    const mbedtls_cipher_info_t *info =
-        mbedtls_cipher_info_from_type(MBEDTLS_CIPHER_AES_128_CFB128);
-    if (info == NULL) {
-        fprintf(stderr, "Failed to get cipher info\n");
-        goto error;
-    }
-
-    // Setup the cipher context
-    if (mbedtls_cipher_setup(&ctx, info)) {
-        fprintf(stderr, "Failed to setup cipher\n");
-        goto error;
-    }
-
-    // Set the IV
-    if (mbedtls_cipher_set_iv(&ctx, iv, mbedtls_cipher_get_iv_size(&ctx))) {
-        fprintf(stderr, "Failed to set IV\n");
-        goto error;
-    }
-
-    // Set the key for encryption
-    if (mbedtls_cipher_setkey(&ctx, key,
-                              mbedtls_cipher_get_key_bitlen(&ctx),
-                              MBEDTLS_ENCRYPT)) {
-        fprintf(stderr, "Failed to set key\n");
-        goto error;
-    }
-
-    // Perform encryption
-    if (mbedtls_cipher_update(&ctx, plaintext, plaintext_len, ciphertext, &len)) {
-        fprintf(stderr, "Failed to update cipher\n");
-        goto error;
-    }
-    total_len += len;
-
-    // Finalize encryption
-    if (mbedtls_cipher_finish(&ctx, ciphertext + total_len, &len)) {
-        fprintf(stderr, "Failed to finish cipher\n");
-        goto error;
-    }
-    total_len += len;
-
-    ciphertext_len = (int)total_len;
-
-    // Free the cipher context
-    mbedtls_cipher_free(&ctx);
-
-    return ciphertext_len;
-
-error:
-    mbedtls_cipher_free(&ctx);
-    perror("aes_128_cfb_encrypt");
-    return -1;
-}
-
-int aes_128_cfb_decrypt(const uint8_t *ciphertext, int ciphertext_len,
-                        const uint8_t *key, const uint8_t *iv,
-                        uint8_t *plaintext)
-{
-    int plaintext_len = 0;
-    size_t len = 0;
-    size_t total_len = 0;
-    mbedtls_cipher_context_t ctx;
-
-    mbedtls_cipher_init(&ctx);
-
-    // Get cipher information for AES-128-CFB128
-    const mbedtls_cipher_info_t *info =
-        mbedtls_cipher_info_from_type(MBEDTLS_CIPHER_AES_128_CFB128);
-    if (info == NULL) {
-        fprintf(stderr, "Failed to get cipher info\n");
-        goto error;
-    }
-
-    // Initialize cipher context
-    if (mbedtls_cipher_setup(&ctx, info)) {
-        fprintf(stderr, "Failed to setup cipher\n");
-        goto error;
-    }
-
-    // Set the IV
-    if (mbedtls_cipher_set_iv(&ctx, iv, mbedtls_cipher_get_iv_size(&ctx))) {
-        fprintf(stderr, "Failed to set IV\n");
-        goto error;
-    }
-
-    // Set the key for decryption
-    if (mbedtls_cipher_setkey(&ctx, key,
-                              mbedtls_cipher_get_key_bitlen(&ctx),
-                              MBEDTLS_DECRYPT)) {
-        fprintf(stderr, "Failed to set key\n");
-        goto error;
-    }
-
-    // Perform decryption
-    if (mbedtls_cipher_update(&ctx, ciphertext, ciphertext_len, plaintext, &len)) {
-        fprintf(stderr, "Failed to update cipher\n");
-        goto error;
-    }
-    total_len += len;
-
-    // Finalize decryption
-    if (mbedtls_cipher_finish(&ctx, plaintext + total_len, &len)) {
-        fprintf(stderr, "Failed to finish cipher\n");
-        goto error;
-    }
-    total_len += len;
-
-    plaintext_len = (int)total_len;
-
-    // Free the cipher context
-    mbedtls_cipher_free(&ctx);
-
-    return plaintext_len;
-
-error:
-    mbedtls_cipher_free(&ctx);
-    perror("aes_128_cfb_decrypt");
-    return -1;
-}
-
-#endif
 
 bool hkdf_sha1(const uint8_t *salt, size_t salt_len, const uint8_t *ikm,
 	       size_t ikm_len, const uint8_t *info, size_t info_len,
@@ -651,35 +512,42 @@ static bool pgs_cryptor_encrypt_gcm(pgs_cryptor_t *ptr,
 }
 
 static bool pgs_cryptor_decrypt_gcm(pgs_cryptor_t *ptr,
-				    const uint8_t *ciphertext,
-				    size_t ciphertext_len, const uint8_t *tag,
-				    uint8_t *plaintext, size_t *plaintext_len)
+                                    const uint8_t *ciphertext,
+                                    size_t ciphertext_len, const uint8_t *tag,
+                                    uint8_t *plaintext, size_t *plaintext_len)
 {
-	size_t out_len = 0, tmp_len = 0;
-	unsigned char last_block[16] = {0};
+    size_t out_len = 0, tmp_len = 0;
+    unsigned char last_block[16] = {0};
 
-	if (mbedtls_gcm_starts(ptr->ctx, MBEDTLS_GCM_DECRYPT, ptr->iv,ptr->iv_len) 
-			&& mbedtls_gcm_update_ad(ptr->ctx, tag, ptr->tag_len)) {
-		return false;
-	}
-	if (mbedtls_gcm_update(ptr->ctx, ciphertext, ciphertext_len, plaintext,
-				*plaintext_len, &out_len)) {
-		return false;
-	}
-	if (mbedtls_gcm_finish(ptr->ctx, last_block, sizeof(last_block), &tmp_len,
-				(unsigned char *)tag, ptr->tag_len)) {
-		return false;
-	}
-	if (tmp_len > 0) {
-		if (out_len + tmp_len > *plaintext_len) {
-			return false;
-		}
-		memcpy(plaintext + out_len, last_block, tmp_len);
-		out_len += tmp_len;
-	}
+    // Start GCM decryption
+    if (mbedtls_gcm_starts(ptr->ctx, MBEDTLS_GCM_DECRYPT, ptr->iv, ptr->iv_len) != 0 ||
+        mbedtls_gcm_update_ad(ptr->ctx, tag, ptr->tag_len) != 0) {
+        return false;
+    }
 
-	*plaintext_len = out_len;
-	return true;
+    // Decrypt the ciphertext
+    if (mbedtls_gcm_update(ptr->ctx, ciphertext, ciphertext_len, plaintext,
+                           &out_len) != 0) {
+        return false;
+    }
+
+    // Finalize decryption and verify tag
+    if (mbedtls_gcm_finish(ptr->ctx, last_block, sizeof(last_block), &tmp_len,
+                           (unsigned char *)tag, ptr->tag_len) != 0) {
+        return false;
+    }
+
+    // Add any residual data from last_block to plaintext
+    if (tmp_len > 0) {
+        if (out_len + tmp_len > *plaintext_len) {
+            return false; // Insufficient buffer
+        }
+        memcpy(plaintext + out_len, last_block, tmp_len);
+        out_len += tmp_len;
+    }
+
+    *plaintext_len = out_len;
+    return true;
 }
 
 #endif
