@@ -491,8 +491,8 @@ static bool pgs_cryptor_encrypt_gcm(pgs_cryptor_t *ptr,
         return false;
     }
 
-    // Encrypt the plaintext
-    if (mbedtls_gcm_update(ptr->ctx, plaintext, plaintext_len, ciphertext, &out_len) != 0) {
+    // Encrypt the plaintext (updated signature for mbedTLS v3)
+    if (mbedtls_gcm_update(ptr->ctx, plaintext_len, plaintext, ciphertext, plaintext_len, &out_len) != 0) {
         return false;
     }
 
@@ -524,20 +524,18 @@ static bool pgs_cryptor_decrypt_gcm(pgs_cryptor_t *ptr,
     unsigned char last_block[16] = {0};
 
     // Start GCM decryption
-    if (mbedtls_gcm_starts(ptr->ctx, MBEDTLS_GCM_DECRYPT, ptr->iv, ptr->iv_len) != 0 ||
-        mbedtls_gcm_update_ad(ptr->ctx, tag, ptr->tag_len) != 0) {
+    if (mbedtls_gcm_starts(ptr->ctx, MBEDTLS_GCM_DECRYPT, ptr->iv, ptr->iv_len) != 0) {
         return false;
     }
 
-    // Decrypt the ciphertext
-    if (mbedtls_gcm_update(ptr->ctx, ciphertext, ciphertext_len, plaintext,
-                           &out_len) != 0) {
+    // Decrypt the ciphertext (updated signature for mbedTLS v3)
+    if (mbedtls_gcm_update(ptr->ctx, ciphertext_len, ciphertext, plaintext, ciphertext_len, &out_len) != 0) {
         return false;
     }
 
-    // Finalize decryption and verify tag
+    // Finalize decryption and validate the authentication tag
     if (mbedtls_gcm_finish(ptr->ctx, last_block, sizeof(last_block), &tmp_len,
-                           (unsigned char *)tag, ptr->tag_len) != 0) {
+                           tag, ptr->tag_len) != 0) {
         return false;
     }
 
