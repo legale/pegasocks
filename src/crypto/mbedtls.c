@@ -483,28 +483,27 @@ static bool pgs_cryptor_encrypt_gcm(pgs_cryptor_t *ptr,
                                     size_t plaintext_len, uint8_t *tag,
                                     uint8_t *ciphertext, size_t *ciphertext_len)
 {
-    size_t out_len = 0;
-
     // Start GCM encryption
     if (mbedtls_gcm_starts(ptr->ctx, MBEDTLS_GCM_ENCRYPT, ptr->iv, ptr->iv_len) != 0) {
         return false;
     }
 
     // Encrypt the plaintext
-    if (mbedtls_gcm_update(ptr->ctx, plaintext, plaintext_len, ciphertext, &out_len) != 0) {
+    if (mbedtls_gcm_update(ptr->ctx, plaintext, plaintext_len, ciphertext, plaintext_len) != 0) {
         return false;
     }
 
-    // Complete encryption and generate the authentication tag
-    if (mbedtls_gcm_finish(ptr->ctx, NULL, 0) != 0) {
+    // Complete encryption (no output, just finishes the operation)
+    if (mbedtls_gcm_finish(ptr->ctx) != 0) {
         return false;
     }
 
+    // Write the authentication tag
     if (mbedtls_gcm_write_tag(ptr->ctx, tag, ptr->tag_len) != 0) {
         return false;
     }
 
-    *ciphertext_len = out_len; // Set ciphertext length
+    *ciphertext_len = plaintext_len; // Output length equals plaintext length
     return true;
 }
 
@@ -513,8 +512,6 @@ static bool pgs_cryptor_decrypt_gcm(pgs_cryptor_t *ptr,
                                     size_t ciphertext_len, const uint8_t *tag,
                                     uint8_t *plaintext, size_t *plaintext_len)
 {
-    size_t out_len = 0;
-
     // Start GCM decryption
     if (mbedtls_gcm_starts(ptr->ctx, MBEDTLS_GCM_DECRYPT, ptr->iv, ptr->iv_len) != 0) {
         return false;
@@ -526,16 +523,16 @@ static bool pgs_cryptor_decrypt_gcm(pgs_cryptor_t *ptr,
     }
 
     // Decrypt the ciphertext
-    if (mbedtls_gcm_update(ptr->ctx, ciphertext, ciphertext_len, plaintext, &out_len) != 0) {
+    if (mbedtls_gcm_update(ptr->ctx, ciphertext, ciphertext_len, plaintext, ciphertext_len) != 0) {
         return false;
     }
 
     // Complete decryption (validates the authentication tag)
-    if (mbedtls_gcm_finish(ptr->ctx, NULL, 0) != 0) {
+    if (mbedtls_gcm_finish(ptr->ctx) != 0) {
         return false;
     }
 
-    *plaintext_len = out_len; // Set plaintext length
+    *plaintext_len = ciphertext_len; // Output length equals ciphertext length
     return true;
 }
 
