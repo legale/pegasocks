@@ -479,68 +479,60 @@ static bool pgs_cryptor_decrypt_gcm(pgs_cryptor_t *ptr,
 #else
 
 static bool pgs_cryptor_encrypt_gcm(pgs_cryptor_t *ptr,
-				    const uint8_t *plaintext,
-				    size_t plaintext_len, uint8_t *tag,
-				    uint8_t *ciphertext, size_t *ciphertext_len)
+                                    const uint8_t *plaintext,
+                                    size_t plaintext_len, uint8_t *tag,
+                                    uint8_t *ciphertext, size_t *ciphertext_len)
 {
-	size_t out_len = 0, tmp_len = 0;
-	unsigned char last_block[16] = {0};
-	
-	if (mbedtls_gcm_starts(ptr->ctx, MBEDTLS_GCM_ENCRYPT, ptr->iv,
-			       ptr->iv_len)) {
-		return false;
-	}
+    // Ensure output length is initially zero
+    *ciphertext_len = 0;
 
-	if (mbedtls_gcm_update(ptr->ctx, plaintext, plaintext_len, ciphertext,
-				*ciphertext_len, &out_len)) {
-		return false;
-	}
-	if (mbedtls_gcm_finish(ptr->ctx, last_block, sizeof(last_block), &tmp_len,
-				(unsigned char *)tag, ptr->tag_len)) {
-		return false;
-	}
-	if (tmp_len > 0) {
-		if (out_len + tmp_len > *ciphertext_len) {
-			return false;
-		}
-		memcpy(ciphertext + out_len, last_block, tmp_len);
-		out_len += tmp_len;
-	}
+    // Start encryption
+    if (mbedtls_gcm_starts(ptr->ctx, MBEDTLS_GCM_ENCRYPT, ptr->iv, ptr->iv_len) != 0) {
+        return false;
+    }
 
-	*ciphertext_len = out_len;
-	return true;
+    // Process plaintext into ciphertext
+    if (mbedtls_gcm_update(ptr->ctx, plaintext_len, plaintext, plaintext_len, ciphertext, ciphertext_len) != 0) {
+        return false;
+    }
+
+    // Finish encryption and generate authentication tag
+    if (mbedtls_gcm_finish(ptr->ctx, NULL, 0, NULL, 0, tag, ptr->tag_len) != 0) {
+        return false;
+    }
+
+    return true;
 }
 
 static bool pgs_cryptor_decrypt_gcm(pgs_cryptor_t *ptr,
-				    const uint8_t *ciphertext,
-				    size_t ciphertext_len, const uint8_t *tag,
-				    uint8_t *plaintext, size_t *plaintext_len)
+                                    const uint8_t *ciphertext,
+                                    size_t ciphertext_len, const uint8_t *tag,
+                                    uint8_t *plaintext, size_t *plaintext_len)
 {
-	size_t out_len = 0, tmp_len = 0;
-	unsigned char last_block[16] = {0};
+    // Ensure output length is initially zero
+    *plaintext_len = 0;
 
-	if (mbedtls_gcm_starts(ptr->ctx, MBEDTLS_GCM_DECRYPT, ptr->iv,ptr->iv_len) 
-			&& mbedtls_gcm_update_ad(ptr->ctx, tag, ptr->tag_len)) {
-		return false;
-	}
-	if (mbedtls_gcm_update(ptr->ctx, ciphertext, ciphertext_len, plaintext,
-				*plaintext_len, &out_len)) {
-		return false;
-	}
-	if (mbedtls_gcm_finish(ptr->ctx, last_block, sizeof(last_block), &tmp_len,
-				(unsigned char *)tag, ptr->tag_len)) {
-		return false;
-	}
-	if (tmp_len > 0) {
-		if (out_len + tmp_len > *plaintext_len) {
-			return false;
-		}
-		memcpy(plaintext + out_len, last_block, tmp_len);
-		out_len += tmp_len;
-	}
+    // Start decryption
+    if (mbedtls_gcm_starts(ptr->ctx, MBEDTLS_GCM_DECRYPT, ptr->iv, ptr->iv_len) != 0) {
+        return false;
+    }
 
-	*plaintext_len = out_len;
-	return true;
+    // Add authentication tag as additional data
+    if (mbedtls_gcm_update_ad(ptr->ctx, tag, ptr->tag_len) != 0) {
+        return false;
+    }
+
+    // Process ciphertext into plaintext
+    if (mbedtls_gcm_update(ptr->ctx, ciphertext_len, ciphertext, ciphertext_len, plaintext, plaintext_len) != 0) {
+        return false;
+    }
+
+    // Finish decryption and validate authentication tag
+    if (mbedtls_gcm_finish(ptr->ctx, NULL, 0, NULL, 0, NULL, 0) != 0) {
+        return false;
+    }
+
+    return true;
 }
 
 #endif
