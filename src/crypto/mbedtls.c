@@ -483,24 +483,26 @@ static bool pgs_cryptor_encrypt_gcm(pgs_cryptor_t *ptr,
                                     size_t plaintext_len, uint8_t *tag,
                                     uint8_t *ciphertext, size_t *ciphertext_len)
 {
-    // Ensure output length is initially zero
+    // Ensure output length is initialized
     *ciphertext_len = 0;
 
-    // Start encryption
+    // Start encryption with IV
     if (mbedtls_gcm_starts(ptr->ctx, MBEDTLS_GCM_ENCRYPT, ptr->iv, ptr->iv_len) != 0) {
         return false;
     }
 
-    // Process plaintext into ciphertext
-    if (mbedtls_gcm_update(ptr->ctx, plaintext_len, plaintext, plaintext_len, ciphertext, ciphertext_len) != 0) {
+    // Encrypt plaintext to produce ciphertext
+    size_t out_len = 0;
+    if (mbedtls_gcm_update(ptr->ctx, plaintext, plaintext_len, ciphertext, &out_len) != 0) {
         return false;
     }
 
-    // Finish encryption and generate authentication tag
+    // Finalize encryption and generate authentication tag
     if (mbedtls_gcm_finish(ptr->ctx, NULL, 0, NULL, 0, tag, ptr->tag_len) != 0) {
         return false;
     }
 
+    *ciphertext_len = out_len; // Set the ciphertext length
     return true;
 }
 
@@ -509,29 +511,31 @@ static bool pgs_cryptor_decrypt_gcm(pgs_cryptor_t *ptr,
                                     size_t ciphertext_len, const uint8_t *tag,
                                     uint8_t *plaintext, size_t *plaintext_len)
 {
-    // Ensure output length is initially zero
+    // Ensure output length is initialized
     *plaintext_len = 0;
 
-    // Start decryption
+    // Start decryption with IV
     if (mbedtls_gcm_starts(ptr->ctx, MBEDTLS_GCM_DECRYPT, ptr->iv, ptr->iv_len) != 0) {
         return false;
     }
 
-    // Add authentication tag as additional data
+    // Provide the authentication tag as additional data
     if (mbedtls_gcm_update_ad(ptr->ctx, tag, ptr->tag_len) != 0) {
         return false;
     }
 
-    // Process ciphertext into plaintext
-    if (mbedtls_gcm_update(ptr->ctx, ciphertext_len, ciphertext, ciphertext_len, plaintext, plaintext_len) != 0) {
+    // Decrypt ciphertext to produce plaintext
+    size_t out_len = 0;
+    if (mbedtls_gcm_update(ptr->ctx, ciphertext, ciphertext_len, plaintext, &out_len) != 0) {
         return false;
     }
 
-    // Finish decryption and validate authentication tag
+    // Finalize decryption and validate the tag
     if (mbedtls_gcm_finish(ptr->ctx, NULL, 0, NULL, 0, NULL, 0) != 0) {
         return false;
     }
 
+    *plaintext_len = out_len; // Set the plaintext length
     return true;
 }
 
