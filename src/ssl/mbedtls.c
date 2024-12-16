@@ -86,6 +86,7 @@ int pgs_session_outbound_ssl_bev_init(struct bufferevent **bev, int fd,
 				      struct event_base *base,
 				      pgs_ssl_ctx_t *ssl_ctx, const char *sni)
 {
+	// notice: should be freed when bev is freed
 	// Allocate and initialize the mbedTLS SSL context
 	mbedtls_ssl_context *ssl = malloc(sizeof(mbedtls_ssl_context));
 	if (!ssl) {
