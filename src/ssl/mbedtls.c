@@ -88,7 +88,7 @@ int pgs_session_outbound_ssl_bev_init(struct bufferevent **bev, int fd,
 {
     // Allocate and initialize mbedTLS SSL context
     mbedtls_ssl_context *ssl = malloc(sizeof(mbedtls_ssl_context));
-    if (ssl == NULL) {
+    if (!ssl) {
         return -1;
     }
 
@@ -96,14 +96,14 @@ int pgs_session_outbound_ssl_bev_init(struct bufferevent **bev, int fd,
 
     int ret = 0;
 
-    // Setup the SSL context with the provided configuration
+    // Set up the mbedTLS SSL context
     if ((ret = mbedtls_ssl_setup(ssl, &ssl_ctx->conf)) != 0) {
         mbedtls_ssl_free(ssl);
         free(ssl);
         return -1;
     }
 
-    // Set SNI (Server Name Indication)
+    // Set the SNI (Server Name Indication)
     if ((ret = mbedtls_ssl_set_hostname(ssl, sni)) != 0) {
         mbedtls_ssl_free(ssl);
         free(ssl);
@@ -113,8 +113,16 @@ int pgs_session_outbound_ssl_bev_init(struct bufferevent **bev, int fd,
     // Bind the SSL context to the socket
     mbedtls_ssl_set_bio(ssl, &fd, mbedtls_net_send, mbedtls_net_recv, NULL);
 
-    // Assign `bev` as a placeholder for compatibility
-    *bev = (struct bufferevent *)ssl;
+    // Create a standard bufferevent for socket I/O
+    *bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
+    if (!*bev) {
+        mbedtls_ssl_free(ssl);
+        free(ssl);
+        return -1;
+    }
+
+    // Store the mbedTLS SSL context in the bufferevent's "user pointer"
+    bufferevent_setcb(*bev, NULL, NULL, NULL, ssl);
 
     return 0;
 }

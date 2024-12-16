@@ -289,6 +289,7 @@ void pgs_session_outbound_free(pgs_session_outbound_t *ptr)
         bool is_be_ssl = false;
         const pgs_server_config_t *config = ptr->config;
 
+        // Determine if this is an SSL connection
         if (IS_V2RAY_SERVER(config->server_type)) {
             pgs_config_extra_v2ray_t *vconf =
                 (pgs_config_extra_v2ray_t *)config->extra;
@@ -300,15 +301,21 @@ void pgs_session_outbound_free(pgs_session_outbound_t *ptr)
             is_be_ssl = true;
         }
 
-        int fd = ptr->socket_fd; // Assume socket_fd is stored in ptr
+        int fd = bufferevent_getfd(ptr->bev);
 
         if (is_be_ssl) {
-            mbedtls_ssl_context *ssl = (mbedtls_ssl_context *)ptr->bev;
+            // Retrieve the mbedTLS SSL context from the bufferevent
+            mbedtls_ssl_context *ssl = (mbedtls_ssl_context *)bufferevent_getcb(ptr->bev);
+
+            // Free mbedTLS SSL context
             if (ssl) {
                 mbedtls_ssl_free(ssl);
                 free(ssl);
             }
         }
+
+        // Free the bufferevent
+        bufferevent_free(ptr->bev);
 
         if (fd) {
             evutil_closesocket(fd);
