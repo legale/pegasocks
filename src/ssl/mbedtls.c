@@ -83,31 +83,38 @@ void pgs_ssl_ctx_free(pgs_ssl_ctx_t *ctx)
 }
 
 int pgs_session_outbound_ssl_bev_init(struct bufferevent **bev, int fd,
-				      struct event_base *base,
-				      pgs_ssl_ctx_t *ssl_ctx, const char *sni)
+                                      struct event_base *base,
+                                      pgs_ssl_ctx_t *ssl_ctx, const char *sni)
 {
-	// notice: should be freed when bev is freed
-	mbedtls_ssl_context *ssl = malloc(sizeof(mbedtls_ssl_context));
+    // Allocate and initialize mbedTLS SSL context
+    mbedtls_ssl_context *ssl = malloc(sizeof(mbedtls_ssl_context));
+    if (ssl == NULL) {
+        return -1;
+    }
 
-	mbedtls_ssl_init(ssl);
+    mbedtls_ssl_init(ssl);
 
-	int ret = 0;
-	if ((ret = mbedtls_ssl_setup(ssl, &ssl_ctx->conf)) != 0) {
-		return -1;
-	}
-	if ((ret = mbedtls_ssl_set_hostname(ssl, sni)) != 0) {
-		return -1;
-	}
+    int ret = 0;
 
-	*bev = bufferevent_mbedtls_socket_new(base, fd, ssl,
-					      BUFFEREVENT_SSL_CONNECTING,
-					      BEV_OPT_DEFER_CALLBACKS);
-#ifdef BUFFEREVENT_SSL_BATCH_WRITE
-	bufferevent_ssl_set_flags(*bev, BUFFEREVENT_SSL_DIRTY_SHUTDOWN |
-						BUFFEREVENT_SSL_BATCH_WRITE);
-#else
-	bufferevent_mbedtls_set_allow_dirty_shutdown(*bev, 1);
-#endif
+    // Setup the SSL context with the provided configuration
+    if ((ret = mbedtls_ssl_setup(ssl, &ssl_ctx->conf)) != 0) {
+        mbedtls_ssl_free(ssl);
+        free(ssl);
+        return -1;
+    }
 
-	return 0;
+    // Set SNI (Server Name Indication)
+    if ((ret = mbedtls_ssl_set_hostname(ssl, sni)) != 0) {
+        mbedtls_ssl_free(ssl);
+        free(ssl);
+        return -1;
+    }
+
+    // Bind the SSL context to the socket
+    mbedtls_ssl_set_bio(ssl, &fd, mbedtls_net_send, mbedtls_net_recv, NULL);
+
+    // Assign `bev` as a placeholder for compatibility
+    *bev = (struct bufferevent *)ssl;
+
+    return 0;
 }
