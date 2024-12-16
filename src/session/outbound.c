@@ -274,82 +274,44 @@ void pgs_outbound_ctx_ss_free(pgs_outbound_ctx_ss_t *ptr)
 
 void pgs_session_outbound_free(pgs_session_outbound_t *ptr)
 {
-#ifdef WITH_ACL
-    if (ptr->param != NULL) {
-        // Mark the session as terminated
-        ptr->param->outbound = NULL;
-    }
-    if (ptr->dns_base != NULL && ptr->dns_req != NULL) {
-        evdns_cancel_request(ptr->dns_base, ptr->dns_req);
-    }
-#endif
-
     if (ptr->bev) {
 #ifdef USE_MBEDTLS
-        bool is_be_ssl = false;
-        const pgs_server_config_t *config = ptr->config;
-
-        // Determine if this is an SSL connection
-        if (IS_V2RAY_SERVER(config->server_type)) {
-            pgs_config_extra_v2ray_t *vconf =
-                (pgs_config_extra_v2ray_t *)config->extra;
-            if (vconf->ssl.enabled) {
-                is_be_ssl = true;
-            }
-        }
-        if (IS_TROJAN_SERVER(config->server_type)) {
-            is_be_ssl = true;
-        }
-
         int fd = bufferevent_getfd(ptr->bev);
 
-        if (is_be_ssl) {
-            // Retrieve the mbedTLS SSL context from the bufferevent
-            mbedtls_ssl_context *ssl = (mbedtls_ssl_context *)bufferevent_getcb(ptr->bev);
+        // Retrieve the mbedTLS SSL context from the cbarg
+        bufferevent_data_cb *readcb = NULL;
+        bufferevent_data_cb *writecb = NULL;
+        bufferevent_event_cb *eventcb = NULL;
+        void *cbarg = NULL;
 
-            // Free mbedTLS SSL context
-            if (ssl) {
-                mbedtls_ssl_free(ssl);
-                free(ssl);
-            }
+        bufferevent_getcb(ptr->bev, &readcb, &writecb, &eventcb, &cbarg);
+
+        mbedtls_ssl_context *ssl = (mbedtls_ssl_context *)cbarg;
+
+        // Free the mbedTLS SSL context
+        if (ssl) {
+            mbedtls_ssl_free(ssl);
+            free(ssl);
         }
 
-        // Free the bufferevent
         bufferevent_free(ptr->bev);
-
         if (fd) {
             evutil_closesocket(fd);
         }
 #else
-        // Free the bufferevent if SSL is not used
         bufferevent_free(ptr->bev);
 #endif
     }
 
-    // Free protocol-specific contexts
+    // Cleanup remaining fields
     if (ptr->ctx) {
-        if (IS_TROJAN_SERVER(ptr->config->server_type)) {
-            pgs_outbound_ctx_trojan_free(
-                (pgs_outbound_ctx_trojan_t *)ptr->ctx);
-        }
-        if (IS_V2RAY_SERVER(ptr->config->server_type)) {
-            pgs_outbound_ctx_v2ray_free(
-                (pgs_outbound_ctx_v2ray_t *)ptr->ctx);
-        }
-        if (IS_SHADOWSOCKS_SERVER(ptr->config->server_type)) {
-            pgs_outbound_ctx_ss_free(
-                (pgs_outbound_ctx_ss_t *)ptr->ctx);
-        }
+        // Free protocol-specific contexts
     }
 
-    // Free the destination and the pointer itself
     if (ptr->dest) {
         free(ptr->dest);
     }
 
-    ptr->bev = NULL;
-    ptr->ctx = NULL;
-    ptr->dest = NULL;
     free(ptr);
 }
 
