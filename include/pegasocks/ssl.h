@@ -3,6 +3,10 @@
 
 #include "config.h"
 
+#ifndef USE_MBEDTLS
+#include <event2/bufferevent_ssl.h>
+#endif
+
 struct pgs_ssl_ctx_s;
 
 typedef struct pgs_ssl_ctx_s pgs_ssl_ctx_t;

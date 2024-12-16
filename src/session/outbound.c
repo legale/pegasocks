@@ -6,7 +6,9 @@
 
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
+#ifndef USE_MBEDTLS
 #include <event2/bufferevent_ssl.h>
+#endif
 #include <event2/util.h>
 
 #include <stdio.h>
