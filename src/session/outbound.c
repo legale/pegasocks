@@ -303,9 +303,9 @@ void pgs_session_outbound_free(pgs_session_outbound_t *ptr) {
 
         if (is_be_ssl) {
             // Retrieve and clean up the SSL context
-            bufferevent_data_cb *readcb = NULL;
-            bufferevent_data_cb *writecb = NULL;
-            bufferevent_event_cb *eventcb = NULL;
+            bufferevent_data_cb readcb = NULL;
+            bufferevent_data_cb writecb = NULL;
+            bufferevent_event_cb eventcb = NULL;
             void *cbarg = NULL;
 
             bufferevent_getcb(ptr->bev, &readcb, &writecb, &eventcb, &cbarg);
