@@ -87,27 +87,36 @@ int pgs_session_outbound_ssl_bev_init(struct bufferevent **bev, int fd,
 				      pgs_ssl_ctx_t *ssl_ctx, const char *sni)
 {
 	// notice: should be freed when bev is freed
+	// Allocate and initialize the mbedTLS SSL context
 	mbedtls_ssl_context *ssl = malloc(sizeof(mbedtls_ssl_context));
-
+	if (!ssl) {
+		return -1; // Memory allocation failure
+	}
 	mbedtls_ssl_init(ssl);
 
+	// Set up the mbedTLS SSL context
 	int ret = 0;
 	if ((ret = mbedtls_ssl_setup(ssl, &ssl_ctx->conf)) != 0) {
+		mbedtls_ssl_free(ssl);
+		free(ssl);
 		return -1;
 	}
 	if ((ret = mbedtls_ssl_set_hostname(ssl, sni)) != 0) {
+		mbedtls_ssl_free(ssl);
+		free(ssl);
 		return -1;
 	}
 
-	*bev = bufferevent_mbedtls_socket_new(base, fd, ssl,
-					      BUFFEREVENT_SSL_CONNECTING,
-					      BEV_OPT_DEFER_CALLBACKS);
-#ifdef BUFFEREVENT_SSL_BATCH_WRITE
-	bufferevent_ssl_set_flags(*bev, BUFFEREVENT_SSL_DIRTY_SHUTDOWN |
-						BUFFEREVENT_SSL_BATCH_WRITE);
-#else
-	bufferevent_mbedtls_set_allow_dirty_shutdown(*bev, 1);
-#endif
+	// Create a new bufferevent with the initialized mbedTLS SSL context
+	*bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
+	if (!*bev) {
+		mbedtls_ssl_free(ssl);
+		free(ssl);
+		return -1;
+	}
+
+	// Set callbacks and associate mbedTLS SSL context as the cbarg
+	bufferevent_setcb(*bev, NULL, NULL, NULL, ssl);
 
 	return 0;
 }

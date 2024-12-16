@@ -275,42 +275,56 @@ void pgs_outbound_ctx_ss_free(pgs_outbound_ctx_ss_t *ptr)
 void pgs_session_outbound_free(pgs_session_outbound_t *ptr)
 {
 #ifdef WITH_ACL
-	if (ptr->param != NULL) {
-		// may be used by dns callback, update it to NULL, mark this session is terminated
-		ptr->param->outbound = NULL;
-	}
-	if (ptr->dns_base != NULL && ptr->dns_req != NULL) {
-		evdns_cancel_request(ptr->dns_base, ptr->dns_req);
-	}
+    if (ptr->param != NULL) {
+        // may be used by dns callback, update it to NULL, mark this session is terminated
+        ptr->param->outbound = NULL;
+    }
+    if (ptr->dns_base != NULL && ptr->dns_req != NULL) {
+        evdns_cancel_request(ptr->dns_base, ptr->dns_req);
+    }
 #endif
-	if (ptr->bev) {
+    if (ptr->bev) {
 #ifdef USE_MBEDTLS
-		bool is_be_ssl = false;
-		const pgs_server_config_t *config = ptr->config;
-		if (IS_V2RAY_SERVER(config->server_type)) {
-			pgs_config_extra_v2ray_t *vconf =
-				(pgs_config_extra_v2ray_t *)config->extra;
-			if (vconf->ssl.enabled) {
-				is_be_ssl = true;
-			}
-		}
-		if (IS_TROJAN_SERVER(config->server_type)) {
-			is_be_ssl = true;
-		}
-		int fd = bufferevent_getfd(ptr->bev);
+        bool is_be_ssl = false;
+        const pgs_server_config_t *config = ptr->config;
 
-		if (is_be_ssl) {
-			mbedtls_ssl_context *ssl =
-				bufferevent_mbedtls_get_ssl(ptr->bev);
-			bufferevent_free(ptr->bev);
-			mbedtls_ssl_free(ssl);
-			free(ssl);
-		} else {
-			bufferevent_free(ptr->bev);
-		}
+        if (IS_V2RAY_SERVER(config->server_type)) {
+            pgs_config_extra_v2ray_t *vconf =
+                (pgs_config_extra_v2ray_t *)config->extra;
+            if (vconf->ssl.enabled) {
+                is_be_ssl = true;
+            }
+        }
 
-		if (fd)
-			evutil_closesocket(fd);
+        if (IS_TROJAN_SERVER(config->server_type)) {
+            is_be_ssl = true;
+        }
+
+        int fd = bufferevent_getfd(ptr->bev);
+
+        if (is_be_ssl) {
+            // Retrieve and clean up the SSL context
+            bufferevent_data_cb readcb = NULL;
+            bufferevent_data_cb writecb = NULL;
+            bufferevent_event_cb eventcb = NULL;
+            void *cbarg = NULL;
+
+            bufferevent_getcb(ptr->bev, &readcb, &writecb, &eventcb, &cbarg);
+
+            mbedtls_ssl_context *ssl = (mbedtls_ssl_context *)cbarg;
+            if (ssl) {
+                mbedtls_ssl_free(ssl);
+                free(ssl);
+            }
+
+            bufferevent_free(ptr->bev);
+        } else {
+            bufferevent_free(ptr->bev);
+        }
+
+        if (fd) {
+            evutil_closesocket(fd);
+        }
 #else
 		bufferevent_free(ptr->bev);
 #endif

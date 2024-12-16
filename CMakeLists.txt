@@ -132,7 +132,7 @@ if(USE_MBEDTLS)
                     src/ssl/mbedtls.c
                     src/crypto/mbedtls.c
   )
-  list(APPEND THIRDPARTY_LIBS ${LIBEVENT2_MBEDTLS_LIBRARIES} ${MBEDTLS_LIBRARIES})
+  list(APPEND THIRDPARTY_LIBS ${MBEDTLS_LIBRARIES})
 else()
   find_package(OpenSSLx REQUIRED)
   include_directories(${OPENSSL_INCLUDE_DIR})

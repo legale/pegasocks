@@ -3,8 +3,6 @@
 
 #include "config.h"
 
-#include <event2/bufferevent_ssl.h>
-
 struct pgs_ssl_ctx_s;
 
 typedef struct pgs_ssl_ctx_s pgs_ssl_ctx_t;
