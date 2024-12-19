@@ -220,7 +220,6 @@ void sha1(const uint8_t *input, uint64_t input_len, uint8_t *res)
 
 #endif
 
-
 void hmac_md5(const uint8_t *key, uint64_t key_len, const uint8_t *data,
 	      uint64_t data_len, uint8_t *out, uint64_t *out_len)
 {
@@ -497,16 +496,19 @@ static bool pgs_cryptor_encrypt_gcm(pgs_cryptor_t *ptr,
 	}
 
 	// Encrypt the plaintext
-	if (mbedtls_gcm_update(ptr->ctx, plaintext, plaintext_len, ciphertext, plaintext_len, &out_len)) {
+	if (mbedtls_gcm_update(ptr->ctx, plaintext, plaintext_len, ciphertext,
+			       plaintext_len, &out_len)) {
 		return false;
 	}
 
 	// Finalize the operation and generate the tag
-	if (mbedtls_gcm_finish(ptr->ctx, NULL, 0, &out_len, tag, ptr->tag_len)) {
+	if (mbedtls_gcm_finish(ptr->ctx, NULL, 0, &out_len, tag,
+			       ptr->tag_len)) {
 		return false;
 	}
 
-	*ciphertext_len = plaintext_len; // The ciphertext length matches the plaintext length
+	*ciphertext_len =
+		plaintext_len; // The ciphertext length matches the plaintext length
 	return true;
 }
 
@@ -529,16 +531,19 @@ static bool pgs_cryptor_decrypt_gcm(pgs_cryptor_t *ptr,
 	}
 
 	// Decrypt the ciphertext
-	if (mbedtls_gcm_update(ptr->ctx, ciphertext, ciphertext_len, plaintext, ciphertext_len, &out_len)) {
+	if (mbedtls_gcm_update(ptr->ctx, ciphertext, ciphertext_len, plaintext,
+			       ciphertext_len, &out_len)) {
 		return false;
 	}
 
 	// Finalize the operation
-	if (mbedtls_gcm_finish(ptr->ctx, NULL, 0, &out_len, (unsigned char *)tag, ptr->tag_len)) {
+	if (mbedtls_gcm_finish(ptr->ctx, NULL, 0, &out_len,
+			       (unsigned char *)tag, ptr->tag_len)) {
 		return false;
 	}
 
-	*plaintext_len = ciphertext_len; // The plaintext length matches the ciphertext length
+	*plaintext_len =
+		ciphertext_len; // The plaintext length matches the ciphertext length
 	return true;
 }
 

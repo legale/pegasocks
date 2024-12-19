@@ -2,13 +2,13 @@
 #include "session/session.h"
 #include "session/udp.h"
 
+#include <event2/buffer.h>
 #include <event2/bufferevent.h>
 #include <event2/event.h>
-#include <event2/buffer.h>
 
-#include <unistd.h>
 #include <fcntl.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 typedef struct pgs_udp_read_param_s {
 	bool proxy;
@@ -31,7 +31,7 @@ static void on_local_read(struct bufferevent *bev, void *ctx);
 
 /*
  * udp
-  */
+ */
 static int start_udp_server(const pgs_server_config_t *sconfig,
 			    pgs_session_t *session, int *port);
 static void on_udp_read(int fd, short event, void *ctx);
@@ -148,7 +148,7 @@ void on_trojan_local_read(struct bufferevent *bev, void *ctx)
 	pgs_config_extra_trojan_t *tsconf =
 		(pgs_config_extra_trojan_t *)config->extra;
 	if (tsconf->websocket.enabled) {
-		//ws
+		// ws
 		uint64_t head_len = tctx->head_len;
 		uint64_t ws_len = len;
 		if (head_len > 0) {
@@ -207,9 +207,9 @@ void on_ss_local_read(struct bufferevent *bev, void *ctx)
 		return;
 
 	/*
-		Payload length is a 2-byte big-endian unsigned integer capped at 0x3FFF. 
-		The higher two bits are reserved and must be set to zero. 
-		Payload is therefore limited to 16*1024 - 1 bytes.
+	Payload length is a 2-byte big-endian unsigned integer capped at
+	0x3FFF. The higher two bits are reserved and must be set to zero. Payload
+	is therefore limited to 16*1024 - 1 bytes.
 	*/
 	if (len > 0x3FFF) {
 		len = 0x3FFF;
@@ -670,7 +670,8 @@ static void do_udp_read(pgs_udp_read_param_t *param)
 		if (!param->session->outbound->ready) {
 			param->session->inbound->rbuf_pos = param->len;
 			// should be called once ready
-			// notice, this will lost data if client send more than one udp packet before the remote is ready
+			// notice, this will lost data if client send more than one udp packet
+			// before the remote is ready
 			return;
 		}
 		if (IS_TROJAN_SERVER(param->config->server_type)) {
@@ -740,7 +741,7 @@ static void udp_dns_cb(int result, char type, int count, int ttl, void *addrs,
 				(int)(uint8_t)((ip >> 24) & 0xff),
 				(int)(uint8_t)((ip >> 16) & 0xff),
 				(int)(uint8_t)((ip >> 8) & 0xff),
-				(int)(uint8_t)((ip)&0xff));
+				(int)(uint8_t)((ip) & 0xff));
 
 			pgs_session_debug(ctx->session, "%s: %s", ctx->dest,
 					  dest);

@@ -1,15 +1,15 @@
+#include "session/session.h"
 #include "codec/codec.h"
 #include "crypto.h"
 #include "defs.h"
-#include "session/session.h"
-#include "server/manager.h"
 #include "log.h"
-#include "session/udp.h"
+#include "server/manager.h"
 #include "session/session.h"
+#include "session/udp.h"
 
-#include <unistd.h>
 #include <assert.h>
 #include <ctype.h>
+#include <unistd.h>
 
 #include <fcntl.h>
 
@@ -18,7 +18,7 @@
  *
  * @param fd the local socket fd
  * @param local_address the local_server object
- *  which contains logger, base, etc..
+ *	which contains logger, base, etc..
  * @return a pointer of new session
  */
 pgs_session_t *pgs_session_new(int fd, pgs_local_server_t *local_server)
@@ -72,7 +72,8 @@ void pgs_session_free(pgs_session_t *session)
 			}
 			pgs_session_info(
 				session,
-				"%sconnection to %s:%d closed, start: %s, end: %s, send: %d, recv: %d",
+				"%sconnection to %s:%d closed, start: %s, end: %s, "
+				"send: %d, recv: %d",
 				prefix, session->outbound->dest,
 				session->outbound->port, tm_start_str,
 				tm_end_str, session->metrics->send,

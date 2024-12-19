@@ -1,18 +1,21 @@
+#include "codec/codec.h"
 #include "config.h"
 #include "crypto.h"
-#include "session/session.h"
-#include "codec/codec.h"
 #include "dns.h"
+#include "session/session.h"
 
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
-#ifndef USE_MBEDTLS
+#ifdef USE_MBEDTLS
+#include "ssl.h"
+#else
 #include <event2/bufferevent_ssl.h>
 #endif
+
 #include <event2/util.h>
 
-#include <stdio.h>
 #include <fcntl.h>
+#include <stdio.h>
 #include <unistd.h>
 
 /*
@@ -277,56 +280,57 @@ void pgs_outbound_ctx_ss_free(pgs_outbound_ctx_ss_t *ptr)
 void pgs_session_outbound_free(pgs_session_outbound_t *ptr)
 {
 #ifdef WITH_ACL
-    if (ptr->param != NULL) {
-        // may be used by dns callback, update it to NULL, mark this session is terminated
-        ptr->param->outbound = NULL;
-    }
-    if (ptr->dns_base != NULL && ptr->dns_req != NULL) {
-        evdns_cancel_request(ptr->dns_base, ptr->dns_req);
-    }
+	if (ptr->param != NULL) {
+		// may be used by dns callback, update it to NULL, mark this session is
+		// terminated
+		ptr->param->outbound = NULL;
+	}
+	if (ptr->dns_base != NULL && ptr->dns_req != NULL) {
+		evdns_cancel_request(ptr->dns_base, ptr->dns_req);
+	}
 #endif
-    if (ptr->bev) {
+	if (ptr->bev) {
 #ifdef USE_MBEDTLS
-        bool is_be_ssl = false;
-        const pgs_server_config_t *config = ptr->config;
+		bool is_be_ssl = false;
+		const pgs_server_config_t *config = ptr->config;
 
-        if (IS_V2RAY_SERVER(config->server_type)) {
-            pgs_config_extra_v2ray_t *vconf =
-                (pgs_config_extra_v2ray_t *)config->extra;
-            if (vconf->ssl.enabled) {
-                is_be_ssl = true;
-            }
-        }
+		if (IS_V2RAY_SERVER(config->server_type)) {
+			pgs_config_extra_v2ray_t *vconf =
+				(pgs_config_extra_v2ray_t *)config->extra;
+			if (vconf->ssl.enabled) {
+				is_be_ssl = true;
+			}
+		}
 
-        if (IS_TROJAN_SERVER(config->server_type)) {
-            is_be_ssl = true;
-        }
+		if (IS_TROJAN_SERVER(config->server_type)) {
+			is_be_ssl = true;
+		}
 
-        int fd = bufferevent_getfd(ptr->bev);
+		int fd = bufferevent_getfd(ptr->bev);
 
-        if (is_be_ssl) {
-            // Retrieve and clean up the SSL context
-            bufferevent_data_cb readcb = NULL;
-            bufferevent_data_cb writecb = NULL;
-            bufferevent_event_cb eventcb = NULL;
-            void *cbarg = NULL;
+		if (is_be_ssl) {
+			pgs_bev_ctx_t *bev_ctx = NULL;
+			bufferevent_getcb(ptr->bev, NULL, NULL, NULL,
+					  (void *)&bev_ctx);
+			if (!bev_ctx) {
+				perror("bufferevent_getcb");
+				return;
+			}
 
-            bufferevent_getcb(ptr->bev, &readcb, &writecb, &eventcb, &cbarg);
+			mbedtls_ssl_context *ssl = bev_ctx->ssl;
+			if (ssl) {
+				mbedtls_ssl_free(ssl);
+				free(ssl);
+			}
+			free(bev_ctx);
+			bufferevent_free(ptr->bev);
+		} else {
+			bufferevent_free(ptr->bev);
+		}
 
-            mbedtls_ssl_context *ssl = (mbedtls_ssl_context *)cbarg;
-            if (ssl) {
-                mbedtls_ssl_free(ssl);
-                free(ssl);
-            }
-
-            bufferevent_free(ptr->bev);
-        } else {
-            bufferevent_free(ptr->bev);
-        }
-
-        if (fd) {
-            evutil_closesocket(fd);
-        }
+		if (fd) {
+			evutil_closesocket(fd);
+		}
 #else
 		bufferevent_free(ptr->bev);
 #endif
@@ -380,7 +384,10 @@ bool pgs_session_trojan_outbound_init(
 		goto error;
 
 	assert(event_cb && read_cb && ptr->bev);
-	bufferevent_setcb(ptr->bev, read_cb, NULL, event_cb, cb_ctx);
+
+	pgs_bev_ctx_t *bev_ctx = NULL;
+	bufferevent_getcb(ptr->bev, NULL, NULL, NULL, (void *)&bev_ctx);
+	bev_ctx->cb_ctx = cb_ctx;
 
 	return true;
 
@@ -613,6 +620,8 @@ error:
 static void on_trojan_remote_event(struct bufferevent *bev, short events,
 				   void *ctx)
 {
+	pgs_bev_ctx_t *bev_ctx = ctx;
+	ctx = bev_ctx->cb_ctx;
 	pgs_session_t *session = (pgs_session_t *)ctx;
 
 	if (events & BEV_EVENT_CONNECTED) {
@@ -668,7 +677,7 @@ static void on_trojan_remote_event(struct bufferevent *bev, short events,
 
 /*
  * outound read handler
- * it will handle websocket upgrade or 
+ * it will handle websocket upgrade or
  * remote -> decode(ws frame) -> local
  */
 static void on_trojan_remote_read(struct bufferevent *bev, void *ctx)
@@ -708,7 +717,7 @@ static void on_trojan_remote_read(struct bufferevent *bev, void *ctx)
 			pgs_session_error(session, "websocket upgrade fail!");
 			on_trojan_remote_event(bev, BEV_EVENT_ERROR, ctx);
 		} else {
-			//drain
+			// drain
 			evbuffer_drain(input, data_len);
 			session->outbound->ready = true;
 			// local buffer should have data already
@@ -903,7 +912,8 @@ static void on_v2ray_remote_read(struct bufferevent *bev, void *ctx)
 			if (pgs_ws_parse_head(data, data_len, &ws_meta)) {
 				pgs_session_debug(
 					session,
-					"ws_meta.header_len: %d, ws_meta.payload_len: %d, opcode: %d, data_len: %d",
+					"ws_meta.header_len: %d, ws_meta.payload_len: %d, "
+					"opcode: %d, data_len: %d",
 					ws_meta.header_len, ws_meta.payload_len,
 					ws_meta.opcode, data_len);
 				// ignore opcode here
@@ -1054,7 +1064,7 @@ static void outbound_dns_cb(int result, char type, int count, int ttl,
 				(int)(uint8_t)((ip >> 24) & 0xff),
 				(int)(uint8_t)((ip >> 16) & 0xff),
 				(int)(uint8_t)((ip >> 8) & 0xff),
-				(int)(uint8_t)((ip)&0xff));
+				(int)(uint8_t)((ip) & 0xff));
 
 			pgs_logger_debug(ctx->logger, "%s: %s",
 					 ctx->outbound->dest, dest);

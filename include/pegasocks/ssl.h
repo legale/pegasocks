@@ -3,13 +3,25 @@
 
 #include "config.h"
 
-#ifndef USE_MBEDTLS
+#ifdef USE_MBEDTLS
+#include <mbedtls/ssl.h>
+#include <mbedtls/entropy.h>
+#include <mbedtls/ctr_drbg.h>
+#else
 #include <event2/bufferevent_ssl.h>
 #endif
 
-struct pgs_ssl_ctx_s;
+typedef struct pgs_ssl_ctx_s {
+	mbedtls_ssl_config conf;
+	mbedtls_entropy_context entropy;
+	mbedtls_ctr_drbg_context ctr_drbg;
+	mbedtls_x509_crt cacert;
+} pgs_ssl_ctx_t;
 
-typedef struct pgs_ssl_ctx_s pgs_ssl_ctx_t;
+typedef struct {
+	mbedtls_ssl_context *ssl;
+	void *cb_ctx;
+} pgs_bev_ctx_t;
 
 pgs_ssl_ctx_t *pgs_ssl_ctx_new(pgs_config_t *config);
 void pgs_ssl_ctx_free(pgs_ssl_ctx_t *ctx);
