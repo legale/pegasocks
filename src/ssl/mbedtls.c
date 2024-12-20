@@ -8,12 +8,14 @@
 
 #include <stdlib.h>
 
+/*
 struct pgs_ssl_ctx_s {
 	mbedtls_ssl_config conf;
 	mbedtls_entropy_context entropy;
 	mbedtls_ctr_drbg_context ctr_drbg;
 	mbedtls_x509_crt cacert;
 };
+*/
 
 pgs_ssl_ctx_t *pgs_ssl_ctx_new(pgs_config_t *config)
 {
@@ -116,7 +118,11 @@ int pgs_session_outbound_ssl_bev_init(struct bufferevent **bev, int fd,
 	}
 
 	// Set callbacks and associate mbedTLS SSL context as the cbarg
-	bufferevent_setcb(*bev, NULL, NULL, NULL, ssl);
+	pgs_bev_ctx_t *bev_ctx = malloc(sizeof(pgs_bev_ctx_t));
+	bev_ctx->ssl = ssl;
+	bev_ctx->cb_ctx = NULL;
+
+	bufferevent_setcb(*bev, NULL, NULL, NULL, bev_ctx);
 
 	return 0;
 }
