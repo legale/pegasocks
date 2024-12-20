@@ -7,6 +7,10 @@
 #include "applet.h"
 #endif
 
+#ifdef USE_MBEDTLS
+#include "ssl.h"
+#endif
+
 const unsigned char g204_cmd[] = { 0x05, 0x01, 0x00, 0x03, 0x0d, 0x77, 0x77,
 				   0x77, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c,
 				   0x65, 0x2e, 0x63, 0x6e, 0x00, 0x50 };
@@ -48,7 +52,12 @@ static double elapse(struct timeval start_at)
 static void on_trojan_g204_event(struct bufferevent *bev, short events,
 				 void *ctx)
 {
+#ifdef USE_MBEDTLS
+	pgs_bev_ctx_t *bev_ctx = ctx;
+	pgs_metrics_task_ctx_t *mctx = bev_ctx->cb_ctx;
+#else
 	pgs_metrics_task_ctx_t *mctx = ctx;
+#endif
 	if (events & BEV_EVENT_TIMEOUT) {
 		pgs_logger_error(mctx->logger, "(%s)%s:%d g204 timeout",
 				 mctx->config->server_type,
@@ -68,7 +77,12 @@ static void on_trojan_g204_event(struct bufferevent *bev, short events,
 
 static void on_trojan_g204_read(struct bufferevent *bev, void *ctx)
 {
+#ifdef USE_MBEDTLS
+	pgs_bev_ctx_t *bev_ctx = ctx;
+	pgs_metrics_task_ctx_t *mctx = bev_ctx->cb_ctx;
+#else
 	pgs_metrics_task_ctx_t *mctx = ctx;
+#endif
 	const pgs_config_extra_trojan_t *tconfig = mctx->config->extra;
 	if (tconfig->websocket.enabled) {
 		on_trojan_ws_g204_read(bev, ctx);
@@ -80,7 +94,13 @@ static void on_trojan_g204_read(struct bufferevent *bev, void *ctx)
 static void on_v2ray_g204_event(struct bufferevent *bev, short events,
 				void *ctx)
 {
+#ifdef USE_MBEDTLS
+	pgs_bev_ctx_t *bev_ctx = ctx;
+	pgs_metrics_task_ctx_t *mctx = bev_ctx->cb_ctx;
+#else
 	pgs_metrics_task_ctx_t *mctx = ctx;
+#endif
+
 	if (events & BEV_EVENT_TIMEOUT) {
 		pgs_logger_error(mctx->logger, "v2ray g204 timeout");
 		if (mctx)
@@ -97,7 +117,12 @@ static void on_v2ray_g204_event(struct bufferevent *bev, short events,
 
 static void on_v2ray_g204_read(struct bufferevent *bev, void *ctx)
 {
+#ifdef USE_MBEDTLS
+	pgs_bev_ctx_t *bev_ctx = ctx;
+	pgs_metrics_task_ctx_t *mctx = bev_ctx->cb_ctx;
+#else
 	pgs_metrics_task_ctx_t *mctx = ctx;
+#endif
 	const pgs_config_extra_v2ray_t *vconfig = mctx->config->extra;
 	if (vconfig->websocket.enabled) {
 		on_v2ray_ws_g204_read(bev, ctx);
@@ -182,7 +207,13 @@ error:
 
 static void on_ws_g204_event(struct bufferevent *bev, short events, void *ctx)
 {
+#ifdef USE_MBEDTLS
+	pgs_bev_ctx_t *bev_ctx = ctx;
+	pgs_metrics_task_ctx_t *mctx = bev_ctx->cb_ctx;
+#else
 	pgs_metrics_task_ctx_t *mctx = ctx;
+#endif
+
 	if (events & BEV_EVENT_CONNECTED)
 		do_ws_remote_request(bev, ctx);
 	if (events & BEV_EVENT_ERROR)
@@ -197,7 +228,13 @@ static void on_ws_g204_event(struct bufferevent *bev, short events, void *ctx)
 
 static void on_trojan_ws_g204_read(struct bufferevent *bev, void *ctx)
 {
+#ifdef USE_MBEDTLS
+	pgs_bev_ctx_t *bev_ctx = ctx;
+	pgs_metrics_task_ctx_t *mctx = bev_ctx->cb_ctx;
+#else
 	pgs_metrics_task_ctx_t *mctx = ctx;
+#endif
+
 	pgs_logger_debug(mctx->logger, "remote read triggered");
 	struct evbuffer *output = bufferevent_get_output(bev);
 	struct evbuffer *input = bufferevent_get_input(bev);
@@ -256,7 +293,13 @@ static void v2ray_ws_vmess_write_cb(struct evbuffer *writer, uint8_t *data,
 
 static void on_v2ray_ws_g204_read(struct bufferevent *bev, void *ctx)
 {
+#ifdef USE_MBEDTLS
+	pgs_bev_ctx_t *bev_ctx = ctx;
+	pgs_metrics_task_ctx_t *mctx = bev_ctx->cb_ctx;
+#else
 	pgs_metrics_task_ctx_t *mctx = ctx;
+#endif
+
 	struct evbuffer *output = bufferevent_get_output(bev);
 	struct evbuffer *input = bufferevent_get_input(bev);
 
@@ -300,7 +343,13 @@ static void on_v2ray_ws_g204_read(struct bufferevent *bev, void *ctx)
 static void on_trojan_gfw_g204_read(struct bufferevent *bev, void *ctx)
 {
 	// with data
+#ifdef USE_MBEDTLS
+	pgs_bev_ctx_t *bev_ctx = ctx;
+	pgs_metrics_task_ctx_t *mctx = bev_ctx->cb_ctx;
+#else
 	pgs_metrics_task_ctx_t *mctx = ctx;
+#endif
+
 	double g204_time = elapse(mctx->start_at);
 	pgs_logger_debug(mctx->logger, "g204: %f", g204_time);
 	pgs_metrics_update(&mctx->sm->server_stats[mctx->server_idx],
@@ -311,7 +360,13 @@ static void on_trojan_gfw_g204_event(struct bufferevent *bev, short events,
 				     void *ctx)
 {
 	// connect time and error handling
+#ifdef USE_MBEDTLS
+	pgs_bev_ctx_t *bev_ctx = ctx;
+	pgs_metrics_task_ctx_t *mctx = bev_ctx->cb_ctx;
+#else
 	pgs_metrics_task_ctx_t *mctx = ctx;
+#endif
+
 	if (events & BEV_EVENT_CONNECTED) {
 		// set connected
 		pgs_outbound_ctx_trojan_t *sctx = mctx->outbound->ctx;
@@ -343,7 +398,13 @@ static void on_trojan_gfw_g204_event(struct bufferevent *bev, short events,
 }
 static void on_v2ray_tcp_g204_read(struct bufferevent *bev, void *ctx)
 {
+#ifdef USE_MBEDTLS
+	pgs_bev_ctx_t *bev_ctx = ctx;
+	pgs_metrics_task_ctx_t *mctx = bev_ctx->cb_ctx;
+#else
 	pgs_metrics_task_ctx_t *mctx = ctx;
+#endif
+
 	double g204_time = elapse(mctx->start_at);
 	pgs_logger_debug(mctx->logger, "g204: %f", g204_time);
 	pgs_metrics_update(&mctx->sm->server_stats[mctx->server_idx],
@@ -354,7 +415,13 @@ static void on_v2ray_tcp_g204_read(struct bufferevent *bev, void *ctx)
 
 static void on_ss_g204_read(struct bufferevent *bev, void *ctx)
 {
+#ifdef USE_MBEDTLS
+	pgs_bev_ctx_t *bev_ctx = ctx;
+	pgs_metrics_task_ctx_t *mctx = bev_ctx->cb_ctx;
+#else
 	pgs_metrics_task_ctx_t *mctx = ctx;
+#endif
+
 	double g204_time = elapse(mctx->start_at);
 	pgs_logger_debug(mctx->logger, "g204: %f", g204_time);
 	pgs_metrics_update(&mctx->sm->server_stats[mctx->server_idx],
@@ -365,7 +432,13 @@ static void on_ss_g204_read(struct bufferevent *bev, void *ctx)
 
 static void on_ss_g204_event(struct bufferevent *bev, short events, void *ctx)
 {
+#ifdef USE_MBEDTLS
+	pgs_bev_ctx_t *bev_ctx = ctx;
+	pgs_metrics_task_ctx_t *mctx = bev_ctx->cb_ctx;
+#else
 	pgs_metrics_task_ctx_t *mctx = ctx;
+#endif
+
 	if (events & BEV_EVENT_TIMEOUT) {
 		pgs_logger_error(mctx->logger, "shadowsocks g204 timeout");
 		if (mctx)
@@ -403,7 +476,13 @@ static void on_ss_g204_event(struct bufferevent *bev, short events, void *ctx)
 static void on_v2ray_tcp_g204_event(struct bufferevent *bev, short events,
 				    void *ctx)
 {
+#ifdef USE_MBEDTLS
+	pgs_bev_ctx_t *bev_ctx = ctx;
+	pgs_metrics_task_ctx_t *mctx = bev_ctx->cb_ctx;
+#else
 	pgs_metrics_task_ctx_t *mctx = ctx;
+#endif
+
 	if (events & BEV_EVENT_CONNECTED) {
 		// set connected
 		pgs_outbound_ctx_v2ray_t *sctx = mctx->outbound->ctx;

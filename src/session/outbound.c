@@ -6,7 +6,9 @@
 
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
-#ifndef USE_MBEDTLS
+#ifdef USE_MBEDTLS
+#include "ssl.h"
+#else
 #include <event2/bufferevent_ssl.h>
 #endif
 #include <event2/util.h>
@@ -277,56 +279,56 @@ void pgs_outbound_ctx_ss_free(pgs_outbound_ctx_ss_t *ptr)
 void pgs_session_outbound_free(pgs_session_outbound_t *ptr)
 {
 #ifdef WITH_ACL
-    if (ptr->param != NULL) {
-        // may be used by dns callback, update it to NULL, mark this session is terminated
-        ptr->param->outbound = NULL;
-    }
-    if (ptr->dns_base != NULL && ptr->dns_req != NULL) {
-        evdns_cancel_request(ptr->dns_base, ptr->dns_req);
-    }
+	if (ptr->param != NULL) {
+		// may be used by dns callback, update it to NULL, mark this session is terminated
+		ptr->param->outbound = NULL;
+	}
+	if (ptr->dns_base != NULL && ptr->dns_req != NULL) {
+		evdns_cancel_request(ptr->dns_base, ptr->dns_req);
+	}
 #endif
-    if (ptr->bev) {
+	if (ptr->bev) {
 #ifdef USE_MBEDTLS
-        bool is_be_ssl = false;
-        const pgs_server_config_t *config = ptr->config;
+		bool is_be_ssl = false;
+		const pgs_server_config_t *config = ptr->config;
 
-        if (IS_V2RAY_SERVER(config->server_type)) {
-            pgs_config_extra_v2ray_t *vconf =
-                (pgs_config_extra_v2ray_t *)config->extra;
-            if (vconf->ssl.enabled) {
-                is_be_ssl = true;
-            }
-        }
+		if (IS_V2RAY_SERVER(config->server_type)) {
+			pgs_config_extra_v2ray_t *vconf =
+				(pgs_config_extra_v2ray_t *)config->extra;
+			if (vconf->ssl.enabled) {
+				is_be_ssl = true;
+			}
+		}
 
-        if (IS_TROJAN_SERVER(config->server_type)) {
-            is_be_ssl = true;
-        }
+		if (IS_TROJAN_SERVER(config->server_type)) {
+			is_be_ssl = true;
+		}
 
-        int fd = bufferevent_getfd(ptr->bev);
+		int fd = bufferevent_getfd(ptr->bev);
 
-        if (is_be_ssl) {
-            // Retrieve and clean up the SSL context
-            bufferevent_data_cb readcb = NULL;
-            bufferevent_data_cb writecb = NULL;
-            bufferevent_event_cb eventcb = NULL;
-            void *cbarg = NULL;
+		if (is_be_ssl) {
+			// Retrieve and clean up the SSL context
+			pgs_bev_ctx_t *bev_ctx = NULL;
+			bufferevent_getcb(ptr->bev, NULL, NULL, NULL, (void *)&bev_ctx);
 
-            bufferevent_getcb(ptr->bev, &readcb, &writecb, &eventcb, &cbarg);
+			mbedtls_ssl_context *ssl = bev_ctx->ssl;
+			if (ssl != NULL) {
+				mbedtls_ssl_free(ssl);
+				free(ssl);
+			}
 
-            mbedtls_ssl_context *ssl = (mbedtls_ssl_context *)cbarg;
-            if (ssl) {
-                mbedtls_ssl_free(ssl);
-                free(ssl);
-            }
+			if (bev_ctx != NULL) {
+				free(bev_ctx);
+			}
 
-            bufferevent_free(ptr->bev);
-        } else {
-            bufferevent_free(ptr->bev);
-        }
+			bufferevent_free(ptr->bev);
+		} else {
+			bufferevent_free(ptr->bev);
+		}
 
-        if (fd) {
-            evutil_closesocket(fd);
-        }
+		if (fd) {
+			evutil_closesocket(fd);
+		}
 #else
 		bufferevent_free(ptr->bev);
 #endif
@@ -380,7 +382,15 @@ bool pgs_session_trojan_outbound_init(
 		goto error;
 
 	assert(event_cb && read_cb && ptr->bev);
+#ifdef USE_MBEDTLS
+	pgs_bev_ctx_t *bev_ctx = NULL;
+	bufferevent_getcb(ptr->bev, NULL, NULL, NULL, (void *)&bev_ctx);
+	bev_ctx->cb_ctx = cb_ctx;
+
+	bufferevent_setcb(ptr->bev, read_cb, NULL, event_cb, bev_ctx);
+#else
 	bufferevent_setcb(ptr->bev, read_cb, NULL, event_cb, cb_ctx);
+#endif
 
 	return true;
 
