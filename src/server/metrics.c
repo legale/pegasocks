@@ -512,7 +512,13 @@ static void on_v2ray_tcp_g204_event(struct bufferevent *bev, short events,
 
 static void do_ws_remote_request(struct bufferevent *bev, void *ctx)
 {
-	pgs_metrics_task_ctx_t *mctx = (pgs_metrics_task_ctx_t *)ctx;
+#ifdef USE_MBEDTLS
+	pgs_bev_ctx_t *bev_ctx = ctx;
+	pgs_metrics_task_ctx_t *mctx = bev_ctx->cb_ctx;
+#else
+	pgs_metrics_task_ctx_t *mctx = ctx;
+#endif
+
 	const pgs_server_config_t *config = mctx->outbound->config;
 
 	const pgs_config_ws_t *ws_config = config->extra;
