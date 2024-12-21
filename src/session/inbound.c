@@ -479,6 +479,26 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 		}
 	case INBOUND_PROXY:
 		syslog2(LOG_INFO, "INBOUND_PROXY state: %d", state);
+		// if outbound is ready, check outbound type and do the rest
+		assert(session->outbound != NULL);
+		if (!session->outbound->ready) {
+			// it will call local_read manually when ready
+			return;
+		}
+		if (session->outbound->bypass) {
+			return on_bypass_local_read(bev, ctx);
+		} else {
+			// check config
+			const pgs_server_config_t *config =
+				session->outbound->config;
+			if (IS_V2RAY_SERVER(config->server_type)) {
+				return on_v2ray_local_read(bev, ctx);
+			} else if (IS_TROJAN_SERVER(config->server_type)) {
+				return on_trojan_local_read(bev, ctx);
+			} else if (IS_SHADOWSOCKS_SERVER(config->server_type)) {
+				return on_ss_local_read(bev, ctx);
+			}
+		}
 		break;
 
 	case INBOUND_UDP_RELAY:
