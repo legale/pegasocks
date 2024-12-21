@@ -4,6 +4,9 @@ project(pegasocks LANGUAGES C)
 
 set (CMAKE_C_STANDARD 11)
 
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fmacro-prefix-map=${CMAKE_SOURCE_DIR}/src/=")
+
+
 # SAN start =======================================
 set(CMAKE_BUILD_TYPE ${CMAKE_BUILD_TYPE}
     CACHE STRING "Choose the type of build, options are: None Debug Release RelWithDebInfo MinSizeRel tsan asan lsan msan ubsan"
@@ -46,6 +49,7 @@ endif()
 
 
 set(PEGAS_SOURCES 
+                  src/syslog2.c
                   src/pegas.c
                   src/config.c
                   src/mpsc.c
@@ -336,3 +340,4 @@ list(APPEND CMAKE_CTEST_ARGUMENTS "--output-on-failure")
 enable_testing()
 add_subdirectory(test)
 
+message(STATUS "THIRDPARTY_LIBS: ${THIRDPARTY_LIBS}")

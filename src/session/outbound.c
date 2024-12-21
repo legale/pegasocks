@@ -3,6 +3,7 @@
 #include "session/session.h"
 #include "codec/codec.h"
 #include "dns.h"
+#include "syslog2.h"
 
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
@@ -69,6 +70,10 @@ void socks5_dest_addr_parse(const uint8_t *cmd, size_t cmd_len, uint8_t *atype,
 	case SOCKS5_CMD_IPV4: {
 		assert(cmd_len > 8);
 		dest = (char *)malloc(sizeof(char) * 32);
+		if (!dest) {
+			syslog2(LOG_ERR, "failed malloc SOCKS5_CMD_IPV4");
+			return;
+		}
 		sprintf(dest, "%d.%d.%d.%d", cmd[offset], cmd[offset + 1],
 			cmd[offset + 2], cmd[offset + 3]);
 		offset += 4;
@@ -79,6 +84,10 @@ void socks5_dest_addr_parse(const uint8_t *cmd, size_t cmd_len, uint8_t *atype,
 		int len = cmd[4];
 		assert(cmd_len > len + 4);
 		dest = (char *)malloc(sizeof(char) * (len + 1));
+		if (!dest) {
+			syslog2(LOG_ERR, "failed malloc SOCKS5_CMD_HOSTNAME");
+			return;
+		}
 		memcpy(dest, cmd + 5, len);
 		dest[len] = '\0';
 		offset += len;
@@ -87,6 +96,11 @@ void socks5_dest_addr_parse(const uint8_t *cmd, size_t cmd_len, uint8_t *atype,
 	case SOCKS5_CMD_IPV6: {
 		assert(cmd_len > 20);
 		dest = (char *)malloc(sizeof(char) * 32);
+		if (!dest) {
+			syslog2(LOG_ERR,
+				"failed malloc SOCKS5_CMD_IPV6");
+			return;
+		}			
 		sprintf(dest, "%x:%x:%x:%x:%x:%x:%x:%x",
 			cmd[offset] << 8 | cmd[offset + 1],
 			cmd[offset + 2] << 8 | cmd[offset + 3],
@@ -112,8 +126,10 @@ pgs_outbound_ctx_trojan_t *
 pgs_outbound_ctx_trojan_new(const uint8_t *encodepass, size_t passlen,
 			    const uint8_t *cmd, size_t cmdlen)
 {
-	if (passlen != SHA224_LEN * 2 || cmdlen < 3)
+	if (passlen != SHA224_LEN * 2 || cmdlen < 3) {
+		syslog2(LOG_ERR, "error password len: %zd", passlen);
 		return NULL;
+	}
 	pgs_outbound_ctx_trojan_t *ptr = (pgs_outbound_ctx_trojan_t *)malloc(
 		sizeof(pgs_outbound_ctx_trojan_t));
 	ptr->head_len = passlen + 2 + 1 + cmdlen - 3 + 2;
@@ -309,7 +325,8 @@ void pgs_session_outbound_free(pgs_session_outbound_t *ptr)
 		if (is_be_ssl) {
 			// Retrieve and clean up the SSL context
 			pgs_bev_ctx_t *bev_ctx = NULL;
-			bufferevent_getcb(ptr->bev, NULL, NULL, NULL, (void *)&bev_ctx);
+			bufferevent_getcb(ptr->bev, NULL, NULL, NULL,
+					  (void *)&bev_ctx);
 
 			mbedtls_ssl_context *ssl = bev_ctx->ssl;
 			if (ssl != NULL) {
@@ -533,6 +550,8 @@ bool pgs_session_outbound_init(pgs_session_outbound_t *ptr, bool is_udp,
 	// CHECK if all zeros for UDP
 	uint8_t atype = 0;
 	socks5_dest_addr_parse(cmd, cmd_len, &atype, &ptr->dest, &ptr->port);
+	syslog2(LOG_DEBUG, "parsed address: %s, port: %d, atype: %d", ptr->dest,
+		ptr->port, atype);
 
 	pgs_outbound_init_param_t param = { true,    is_udp,  logger, local,
 					    ptr,     gconfig, config, cmd,
@@ -540,6 +559,8 @@ bool pgs_session_outbound_init(pgs_session_outbound_t *ptr, bool is_udp,
 
 #ifdef WITH_ACL
 	if (local->acl != NULL) {
+		syslog2(LOG_INFO, "ACL present, checking rules for host: %s",
+			ptr->dest);
 		bool bypass_match =
 			pgs_acl_match_host_bypass(local->acl, ptr->dest);
 		bool proxy_match =
@@ -547,30 +568,56 @@ bool pgs_session_outbound_init(pgs_session_outbound_t *ptr, bool is_udp,
 
 		if (!bypass_match && !proxy_match &&
 		    atype == SOCKS5_CMD_HOSTNAME) {
+			syslog2(LOG_INFO,
+				"No direct match in ACL. Performing DNS resolve for: %s",
+				ptr->dest);
 			pgs_outbound_init_param_t *p =
 				malloc(sizeof(pgs_outbound_init_param_t));
 			*p = param;
 			ptr->param = p;
 			ptr->dns_base = local->dns_base;
+
+			syslog2(LOG_INFO, "DNS req host: %s", ptr->dest);
 			ptr->dns_req =
 				evdns_base_resolve_ipv4(local->dns_base,
 							ptr->dest, 0,
 							outbound_dns_cb, p);
 
+			if (!ptr->dns_req) {
+				syslog2(LOG_ERR,
+					"DNS request failed for host: %s",
+					ptr->dest);
+				goto error;
+			}
+
+			syslog2(LOG_NOTICE, "DNS req host: %s", ptr->dest);
 			return true;
 		}
 
 		if (proxy_match) {
 			param.proxy = true;
+			syslog2(LOG_INFO, "Host matched proxy ACL rule: %s",
+				ptr->dest);
 		}
 		if (bypass_match) {
 			param.proxy = false;
+			syslog2(LOG_INFO, "Host matched bypass ACL rule: %s",
+				ptr->dest);
 		}
 	}
 #endif
 
-	return do_outbound_init(&param);
+	syslog2(LOG_INFO, "outbound init host: %s, port: %d", ptr->dest,
+		ptr->port);
+	if (!do_outbound_init(&param)) {
+		syslog2(LOG_ERR, "failed outbound init host: %s", ptr->dest);
+		goto error;
+	}
+
+	syslog2(LOG_NOTICE, "outbound init OK host: %s", ptr->dest);
+	return true;
 error:
+	syslog2(LOG_ERR, "failed outbound init session");
 	return false;
 }
 
@@ -589,7 +636,7 @@ static void on_bypass_remote_event(struct bufferevent *bev, short events,
 	}
 
 	if (events & BEV_EVENT_TIMEOUT)
-		pgs_session_error(session, "bypass remote timeout");
+		syslog2(LOG_ERR, "bypass remote timeout");
 	if (events & BEV_EVENT_ERROR)
 		pgs_session_error(
 			session,
@@ -606,7 +653,7 @@ static void on_bypass_remote_read(struct bufferevent *bev, void *ctx)
 	ctx = bev_ctx->cb_ctx;
 #endif
 	pgs_session_t *session = (pgs_session_t *)ctx;
-	pgs_session_debug(session, "remote read triggered");
+	syslog2(LOG_DEBUG, "remote read triggered");
 	struct evbuffer *input = bufferevent_get_input(bev);
 	size_t data_len = evbuffer_get_length(input);
 	unsigned char *data = evbuffer_pullup(input, data_len);
@@ -643,19 +690,17 @@ static void on_trojan_remote_event(struct bufferevent *bev, short events,
 		const pgs_config_extra_trojan_t *trojanconfig = config->extra;
 		if (trojanconfig->websocket.enabled) {
 			// ws conenct
-			pgs_session_debug(session,
-					  "do_trojan_ws_remote_request");
+			syslog2(LOG_DEBUG, "do_trojan_ws_remote_request");
 			pgs_ws_req(
 				bufferevent_get_output(session->outbound->bev),
 				trojanconfig->websocket.hostname,
 				config->server_address, config->server_port,
 				trojanconfig->websocket.path);
-			pgs_session_debug(session,
-					  "do_trojan_ws_remote_request done");
+			syslog2(LOG_DEBUG, "do_trojan_ws_remote_request done");
 		} else {
 			// trojan-gfw
 			// should trigger a local read manually
-			pgs_session_debug(session, "trojan-gfw connected");
+			syslog2(LOG_DEBUG, "trojan-gfw connected");
 			pgs_outbound_ctx_trojan_t *trojan_s_ctx =
 				session->outbound->ctx;
 			session->outbound->ready = true;
@@ -678,11 +723,9 @@ static void on_trojan_remote_event(struct bufferevent *bev, short events,
 		}
 	}
 	if (events & BEV_EVENT_TIMEOUT)
-		pgs_session_error(session, "trojan remote timeout");
+		syslog2(LOG_ERR, "trojan remote timeout");
 	if (events & BEV_EVENT_ERROR)
-		pgs_session_error(
-			session,
-			"Error from bufferevent: on_trojan_remote_event");
+		syslog2(LOG_ERR, "error bufferevent: on_trojan_remote_event");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR | BEV_EVENT_TIMEOUT)) {
 		PGS_FREE_SESSION(session);
 	}
@@ -700,7 +743,7 @@ static void on_trojan_remote_read(struct bufferevent *bev, void *ctx)
 	ctx = bev_ctx->cb_ctx;
 #endif
 	pgs_session_t *session = (pgs_session_t *)ctx;
-	pgs_session_debug(session, "remote read triggered");
+	syslog2(LOG_DEBUG, "remote read triggered");
 	struct evbuffer *output = bufferevent_get_output(bev);
 	struct evbuffer *input = bufferevent_get_input(bev);
 
@@ -709,7 +752,7 @@ static void on_trojan_remote_read(struct bufferevent *bev, void *ctx)
 
 	const pgs_server_config_t *config = session->outbound->config;
 	if (config == NULL) {
-		pgs_session_error(session, "current server config not found");
+		syslog2(LOG_ERR, "current server config not found");
 		goto error;
 	}
 	pgs_config_extra_trojan_t *trojanconf =
@@ -731,7 +774,7 @@ static void on_trojan_remote_read(struct bufferevent *bev, void *ctx)
 			return;
 
 		if (pgs_ws_upgrade_check((const char *)data)) {
-			pgs_session_error(session, "websocket upgrade fail!");
+			syslog2(LOG_ERR, "websocket upgrade fail!");
 			on_trojan_remote_event(bev, BEV_EVENT_ERROR, ctx);
 		} else {
 			//drain
@@ -756,7 +799,7 @@ static void on_trojan_remote_read(struct bufferevent *bev, void *ctx)
 	} else {
 		// upgraded, decode it and write to local
 		// read from remote
-		pgs_session_debug(session, "remote -> decode -> local");
+		syslog2(LOG_DEBUG, "remote -> decode -> local");
 
 		if (data_len < 2)
 			return; // wait next read
@@ -777,8 +820,7 @@ static void on_trojan_remote_read(struct bufferevent *bev, void *ctx)
 				}
 
 				if (!ws_meta.fin)
-					pgs_session_debug(
-						session,
+					syslog2(LOG_DEBUG,
 						"frame to be continued..");
 
 				evbuffer_drain(input,
@@ -794,8 +836,7 @@ static void on_trojan_remote_read(struct bufferevent *bev, void *ctx)
 				data += (ws_meta.header_len +
 					 ws_meta.payload_len);
 			} else {
-				pgs_session_debug(
-					session,
+				syslog2(LOG_DEBUG,
 					"Failed to parse ws header, wait for more data");
 				return;
 			}
@@ -823,8 +864,7 @@ static void on_v2ray_remote_event(struct bufferevent *bev, short events,
 		const pgs_server_config_t *config = session->outbound->config;
 		const pgs_config_extra_v2ray_t *vconfig = config->extra;
 		if (vconfig->websocket.enabled) {
-			pgs_session_debug(session,
-					  "do_v2ray_ws_remote_request");
+			syslog2(LOG_DEBUG, "do_v2ray_ws_remote_request");
 
 			pgs_ws_req(
 				bufferevent_get_output(session->outbound->bev),
@@ -832,13 +872,12 @@ static void on_v2ray_remote_event(struct bufferevent *bev, short events,
 				config->server_address, config->server_port,
 				vconfig->websocket.path);
 
-			pgs_session_debug(session,
-					  "do_v2ray_ws_remote_request done");
+			syslog2(LOG_DEBUG, "do_v2ray_ws_remote_request done");
 		} else {
 			pgs_outbound_ctx_v2ray_t *v2ray_s_ctx =
 				session->outbound->ctx;
 			session->outbound->ready = true;
-			pgs_session_debug(session, "v2ray connected");
+			syslog2(LOG_DEBUG, "v2ray connected");
 			if (session->inbound->state == INBOUND_PROXY) {
 				// TCP
 				on_v2ray_local_read(session->inbound->bev, ctx);
@@ -856,7 +895,7 @@ static void on_v2ray_remote_event(struct bufferevent *bev, short events,
 		}
 	}
 	if (events & BEV_EVENT_TIMEOUT)
-		pgs_session_error(session, "v2ray remote timeout");
+		syslog2(LOG_ERR, "v2ray remote timeout");
 	if (events & BEV_EVENT_ERROR)
 		pgs_session_error(
 			session,
@@ -872,7 +911,7 @@ static void on_v2ray_remote_read(struct bufferevent *bev, void *ctx)
 	ctx = bev_ctx->cb_ctx;
 #endif
 	pgs_session_t *session = (pgs_session_t *)ctx;
-	pgs_session_debug(session, "remote read triggered");
+	syslog2(LOG_DEBUG, "remote read triggered");
 	const pgs_server_config_t *config = session->outbound->config;
 	const pgs_config_extra_v2ray_t *vconfig = config->extra;
 
@@ -890,8 +929,7 @@ static void on_v2ray_remote_read(struct bufferevent *bev, void *ctx)
 
 		size_t olen = 0;
 		if (!vmess_write_local(session, data, data_len, &olen)) {
-			pgs_session_error(session,
-					  "failed to decode vmess payload");
+			syslog2(LOG_ERR, "failed to decode vmess payload");
 			on_v2ray_remote_event(bev, BEV_EVENT_ERROR, ctx);
 			return;
 		}
@@ -905,7 +943,7 @@ static void on_v2ray_remote_read(struct bufferevent *bev, void *ctx)
 			return;
 
 		if (pgs_ws_upgrade_check((const char *)data)) {
-			pgs_session_error(session, "websocket upgrade fail!");
+			syslog2(LOG_ERR, "websocket upgrade fail!");
 			on_v2ray_remote_event(bev, BEV_EVENT_ERROR, ctx);
 		} else {
 			evbuffer_drain(input, data_len);
@@ -935,8 +973,7 @@ static void on_v2ray_remote_read(struct bufferevent *bev, void *ctx)
 		while (data_len > 2) {
 			pgs_ws_resp_t ws_meta;
 			if (pgs_ws_parse_head(data, data_len, &ws_meta)) {
-				pgs_session_debug(
-					session,
+				syslog2(LOG_DEBUG,
 					"ws_meta.header_len: %d, ws_meta.payload_len: %d, opcode: %d, data_len: %d",
 					ws_meta.header_len, ws_meta.payload_len,
 					ws_meta.opcode, data_len);
@@ -949,8 +986,7 @@ static void on_v2ray_remote_read(struct bufferevent *bev, void *ctx)
 						    data + ws_meta.header_len,
 						    ws_meta.payload_len,
 						    &olen)) {
-						pgs_session_error(
-							session,
+						syslog2(LOG_ERR,
 							"failed to decode vmess payload");
 						on_v2ray_remote_event(
 							bev, BEV_EVENT_ERROR,
@@ -960,8 +996,7 @@ static void on_v2ray_remote_read(struct bufferevent *bev, void *ctx)
 				}
 
 				if (!ws_meta.fin)
-					pgs_session_debug(
-						session,
+					syslog2(LOG_DEBUG,
 						"frame to be continue..");
 
 				evbuffer_drain(outboundr,
@@ -977,8 +1012,7 @@ static void on_v2ray_remote_read(struct bufferevent *bev, void *ctx)
 				data += (ws_meta.header_len +
 					 ws_meta.payload_len);
 			} else {
-				pgs_session_debug(
-					session,
+				syslog2(LOG_DEBUG,
 					"Failed to parse ws header, wait for more data");
 
 				return;
@@ -1003,10 +1037,9 @@ static void on_ss_remote_event(struct bufferevent *bev, short events, void *ctx)
 		on_ss_local_read(session->inbound->bev, ctx);
 	}
 	if (events & BEV_EVENT_TIMEOUT)
-		pgs_session_error(session, "shadowsocks remote timeout");
+		syslog2(LOG_ERR, "shadowsocks remote timeout");
 	if (events & BEV_EVENT_ERROR)
-		pgs_session_error(session,
-				  "Error from bufferevent: on_ss_remote_event");
+		syslog2(LOG_ERR, "Error from bufferevent: on_ss_remote_event");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR | BEV_EVENT_TIMEOUT)) {
 		PGS_FREE_SESSION(session);
 	}
@@ -1019,7 +1052,7 @@ static void on_ss_remote_read(struct bufferevent *bev, void *ctx)
 	ctx = bev_ctx->cb_ctx;
 #endif
 	pgs_session_t *session = (pgs_session_t *)ctx;
-	pgs_session_debug(session, "ss remote read triggered");
+	syslog2(LOG_DEBUG, "ss remote read triggered");
 	struct evbuffer *input = bufferevent_get_input(bev);
 
 	size_t data_len = evbuffer_get_length(input);
@@ -1034,10 +1067,10 @@ static void on_ss_remote_read(struct bufferevent *bev, void *ctx)
 	bool ok =
 		shadowsocks_write_local(session, data, data_len, &olen, &clen);
 	if (!ok) {
-		pgs_session_error(session, "failed to decode shadowsocks");
+		syslog2(LOG_ERR, "failed to decode shadowsocks");
 		goto error;
 	}
-	pgs_session_debug(session, "clen: %ld, olen: %ld", clen, olen);
+	syslog2(LOG_DEBUG, "clen: %ld, olen: %ld", clen, olen);
 
 	evbuffer_drain(input, clen);
 	on_session_metrics_recv(session, olen);
@@ -1096,7 +1129,7 @@ static void outbound_dns_cb(int result, char type, int count, int ttl,
 				(int)(uint8_t)((ip >> 24) & 0xff),
 				(int)(uint8_t)((ip >> 16) & 0xff),
 				(int)(uint8_t)((ip >> 8) & 0xff),
-				(int)(uint8_t)((ip)&0xff));
+				(int)(uint8_t)((ip) & 0xff));
 
 			pgs_logger_debug(ctx->logger, "%s: %s",
 					 ctx->outbound->dest, dest);
@@ -1121,16 +1154,15 @@ static void outbound_dns_cb(int result, char type, int count, int ttl,
 		}
 	}
 	if (!count) {
-		pgs_logger_error(ctx->logger, "%s: No answer (%d)",
-				 ctx->outbound->dest, result);
+		syslog2(LOG_ERR, "%s: No answer (%d)", ctx->outbound->dest,
+			result);
 	}
 
 	if (dest != NULL) {
 		free(dest);
 	}
 
-	pgs_logger_debug(ctx->logger, "do_outbound_init, proxy: %d",
-			 ctx->proxy);
+	syslog2(LOG_INFO, "do_outbound_init, proxy: %d", ctx->proxy);
 	do_outbound_init(ctx);
 
 done:
@@ -1147,8 +1179,7 @@ done:
 static bool do_outbound_init(pgs_outbound_init_param_t *param)
 {
 	if (param->outbound->dest == NULL) {
-		pgs_logger_error(param->local->logger,
-				 "socks5_dest_addr_parse");
+		syslog2(LOG_ERR, "socks5_dest_addr_parse");
 		return false;
 	}
 
@@ -1176,8 +1207,7 @@ static bool do_outbound_init(pgs_outbound_init_param_t *param)
 				on_ss_remote_read, param->cb_ctx);
 		}
 		if (!ok) {
-			pgs_logger_error(param->local->logger,
-					 "Failed to init outbound");
+			syslog2(LOG_ERR, "Failed to init outbound");
 			return false;
 		}
 
@@ -1190,9 +1220,9 @@ static bool do_outbound_init(pgs_outbound_init_param_t *param)
 			param->config->server_address,
 			param->config->server_port);
 
-		pgs_logger_debug(param->local->logger, "connect: %s:%d",
-				 param->config->server_address,
-				 param->config->server_port);
+		syslog2(LOG_INFO, "connect: %s:%d",
+			param->config->server_address,
+			param->config->server_port);
 		return ok;
 	}
 	if (!param->proxy) {
@@ -1202,14 +1232,16 @@ static bool do_outbound_init(pgs_outbound_init_param_t *param)
 			param->local->base, on_bypass_remote_event,
 			on_bypass_remote_read, param->cb_ctx);
 
-		pgs_logger_info(param->local->logger, "bypass: %s:%d",
-				param->outbound->dest, param->outbound->port);
+		syslog2(LOG_INFO, "bypass: %s:%d", param->outbound->dest,
+			param->outbound->port);
 
 		PGS_OUTBOUND_SET_READ_TIMEOUT(param->outbound,
 					      param->gconfig->timeout);
 		bufferevent_socket_connect_hostname(
 			param->outbound->bev, param->local->dns_base, AF_INET,
 			param->outbound->dest, param->outbound->port);
+		syslog2(LOG_INFO, "connect: %s:%d", param->outbound->dest,
+			param->outbound->port);
 	}
 	return true;
 }

@@ -1,3 +1,5 @@
+#include "syslog2.h"
+
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -5,11 +7,15 @@
 #include <pthread.h>
 #include <signal.h>
 #include <unistd.h>
+
+
+
 #ifdef _WIN32
 #include <winsock.h>
 #endif
 
 #include "pegas.h"
+
 
 static bool should_exit = false;
 
@@ -27,6 +33,9 @@ static void restart(int signum)
 
 int main(int argc, char **argv)
 {
+	setlogmask(LOG_UPTO(LOG_DEBUG));
+	syslog2(LOG_INFO, "main");
+
 #ifdef _WIN32
 	WSADATA wsa_data;
 	WSAStartup(0x0201, &wsa_data);

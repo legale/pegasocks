@@ -11,6 +11,8 @@
 #include "ssl.h"
 #endif
 
+#include "syslog2.h"
+
 const unsigned char g204_cmd[] = { 0x05, 0x01, 0x00, 0x03, 0x0d, 0x77, 0x77,
 				   0x77, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c,
 				   0x65, 0x2e, 0x63, 0x6e, 0x00, 0x50 };
@@ -151,7 +153,7 @@ get_metrics_g204_connect(int idx, const pgs_config_t *gconfig,
 	socks5_dest_addr_parse(cmd, cmd_len, &atype, &ptr->dest, &ptr->port);
 
 	if (ptr->dest == NULL) {
-		pgs_logger_error(logger, "socks5_dest_addr_parse");
+		syslog2(LOG_ERR, "socks5_dest_addr_parse");
 		goto error;
 	}
 
@@ -160,8 +162,7 @@ get_metrics_g204_connect(int idx, const pgs_config_t *gconfig,
 			    ptr, logger, gconfig, config, cmd, cmd_len, base,
 			    ssl_ctx, on_trojan_g204_event, on_trojan_g204_read,
 			    mctx)) {
-			pgs_logger_error(logger,
-					 "Failed to init trojan outbound");
+			syslog2(LOG_ERR, "Failed to init trojan outbound");
 			goto error;
 		}
 	} else if (IS_V2RAY_SERVER(config->server_type)) {
@@ -169,21 +170,19 @@ get_metrics_g204_connect(int idx, const pgs_config_t *gconfig,
 			    ptr, logger, gconfig, config, cmd, cmd_len, base,
 			    ssl_ctx, on_v2ray_g204_event, on_v2ray_g204_read,
 			    mctx)) {
-			pgs_logger_error(logger,
-					 "Failed to init v2ray outbound");
+			syslog2(LOG_ERR, "Failed to init v2ray outbound");
 			goto error;
 		}
 	} else if (IS_SHADOWSOCKS_SERVER(config->server_type)) {
 		if (!pgs_session_ss_outbound_init(
 			    ptr, logger, gconfig, config, cmd, cmd_len, base,
 			    on_ss_g204_event, on_ss_g204_read, mctx)) {
-			pgs_logger_error(logger,
-					 "Failed to init shadowsocks outbound");
+			syslog2(LOG_ERR, "Failed to init shadowsocks outbound");
 			goto error;
 		}
 	} else {
-		pgs_logger_error(logger, "Not supported server type: %s",
-				 config->server_type);
+		syslog2(LOG_ERR, "Not supported server type: %s",
+			config->server_type);
 		goto error;
 	}
 
@@ -194,8 +193,8 @@ get_metrics_g204_connect(int idx, const pgs_config_t *gconfig,
 					    config->server_address,
 					    config->server_port);
 
-	pgs_logger_debug(logger, "connect: %s:%d", config->server_address,
-			 config->server_port);
+	syslog2(LOG_INFO, "connect: %s:%d", config->server_address,
+		config->server_port);
 
 	return mctx;
 
@@ -217,9 +216,9 @@ static void on_ws_g204_event(struct bufferevent *bev, short events, void *ctx)
 	if (events & BEV_EVENT_CONNECTED)
 		do_ws_remote_request(bev, ctx);
 	if (events & BEV_EVENT_ERROR)
-		pgs_logger_error(mctx->logger, "ws g204 error");
+		syslog2(LOG_ERR, "ws g204 error");
 	if (events & BEV_EVENT_TIMEOUT)
-		pgs_logger_error(mctx->logger, "ws g204 timeout");
+		syslog2(LOG_ERR, "ws g204 timeout");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR | BEV_EVENT_TIMEOUT)) {
 		if (mctx)
 			PGS_FREE_METRICS_TASK(mctx);
@@ -235,7 +234,7 @@ static void on_trojan_ws_g204_read(struct bufferevent *bev, void *ctx)
 	pgs_metrics_task_ctx_t *mctx = ctx;
 #endif
 
-	pgs_logger_debug(mctx->logger, "remote read triggered");
+	syslog2(LOG_DEBUG, "remote read triggered");
 	struct evbuffer *output = bufferevent_get_output(bev);
 	struct evbuffer *input = bufferevent_get_input(bev);
 
@@ -248,16 +247,14 @@ static void on_trojan_ws_g204_read(struct bufferevent *bev, void *ctx)
 			return;
 
 		if (pgs_ws_upgrade_check((const char *)data)) {
-			pgs_logger_error(mctx->logger,
-					 "websocket upgrade fail!");
+			syslog2(LOG_ERR, "ws upgrade fail!");
 			on_ws_g204_event(bev, BEV_EVENT_ERROR, ctx);
 		} else {
 			//drain
 			evbuffer_drain(input, data_len);
 			mctx->outbound->ready = true;
 			double connect_time = elapse(mctx->start_at);
-			pgs_logger_debug(mctx->logger, "connect: %f",
-					 connect_time);
+			syslog2(LOG_INFO, "connect: %f", connect_time);
 			mctx->sm->server_stats[mctx->server_idx].connect_delay =
 				connect_time;
 
@@ -279,7 +276,7 @@ static void on_trojan_ws_g204_read(struct bufferevent *bev, void *ctx)
 		}
 	} else {
 		double g204_time = elapse(mctx->start_at);
-		pgs_logger_debug(mctx->logger, "g204: %f", g204_time);
+		syslog2(LOG_INFO, "g204: %f", g204_time);
 		pgs_metrics_update(&mctx->sm->server_stats[mctx->server_idx],
 				   g204_time);
 	}
@@ -312,16 +309,14 @@ static void on_v2ray_ws_g204_read(struct bufferevent *bev, void *ctx)
 			return;
 
 		if (pgs_ws_upgrade_check((const char *)data)) {
-			pgs_logger_error(mctx->logger,
-					 "websocket upgrade fail!");
+			syslog2(LOG_ERR, "ws upgrade fail!");
 			on_ws_g204_event(bev, BEV_EVENT_ERROR, ctx);
 		} else {
 			//drain
 			evbuffer_drain(input, data_len);
 			mctx->outbound->ready = true;
 			double connect_time = elapse(mctx->start_at);
-			pgs_logger_debug(mctx->logger, "connect: %f",
-					 connect_time);
+			syslog2(LOG_DEBUG, "connect: %f", connect_time);
 			mctx->sm->server_stats[mctx->server_idx].connect_delay =
 				connect_time;
 			pgs_session_t dummy = { 0 };
@@ -333,7 +328,7 @@ static void on_v2ray_ws_g204_read(struct bufferevent *bev, void *ctx)
 		}
 	} else {
 		double g204_time = elapse(mctx->start_at);
-		pgs_logger_debug(mctx->logger, "g204: %f", g204_time);
+		syslog2(LOG_DEBUG, "g204: %f", g204_time);
 		pgs_metrics_update(&mctx->sm->server_stats[mctx->server_idx],
 				   g204_time);
 		// drop it, clean up
@@ -351,7 +346,7 @@ static void on_trojan_gfw_g204_read(struct bufferevent *bev, void *ctx)
 #endif
 
 	double g204_time = elapse(mctx->start_at);
-	pgs_logger_debug(mctx->logger, "g204: %f", g204_time);
+	syslog2(LOG_DEBUG, "g204: %f", g204_time);
 	pgs_metrics_update(&mctx->sm->server_stats[mctx->server_idx],
 			   g204_time);
 	on_trojan_gfw_g204_event(bev, BEV_EVENT_EOF, ctx);
@@ -372,8 +367,7 @@ static void on_trojan_gfw_g204_event(struct bufferevent *bev, short events,
 		pgs_outbound_ctx_trojan_t *sctx = mctx->outbound->ctx;
 		mctx->outbound->ready = true;
 		double connect_time = elapse(mctx->start_at);
-		pgs_logger_debug(mctx->logger, "trojan gfw connected: %f",
-				 connect_time);
+		syslog2(LOG_NOTICE, "trojan gfw connected: %f", connect_time);
 		mctx->sm->server_stats[mctx->server_idx].connect_delay =
 			connect_time;
 		// write request
@@ -390,7 +384,7 @@ static void on_trojan_gfw_g204_event(struct bufferevent *bev, short events,
 		evbuffer_add(output, g204_http_req, len - head_len);
 	}
 	if (events & BEV_EVENT_ERROR)
-		pgs_logger_error(mctx->logger, "Error from bufferevent");
+		syslog2(LOG_ERR, "error bufferevent");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
 		if (mctx)
 			PGS_FREE_METRICS_TASK(mctx);
@@ -406,7 +400,7 @@ static void on_v2ray_tcp_g204_read(struct bufferevent *bev, void *ctx)
 #endif
 
 	double g204_time = elapse(mctx->start_at);
-	pgs_logger_debug(mctx->logger, "g204: %f", g204_time);
+	syslog2(LOG_DEBUG, "g204: %f", g204_time);
 	pgs_metrics_update(&mctx->sm->server_stats[mctx->server_idx],
 			   g204_time);
 	// drop it, clean up
@@ -423,7 +417,7 @@ static void on_ss_g204_read(struct bufferevent *bev, void *ctx)
 #endif
 
 	double g204_time = elapse(mctx->start_at);
-	pgs_logger_debug(mctx->logger, "g204: %f", g204_time);
+	syslog2(LOG_DEBUG, "g204: %f", g204_time);
 	pgs_metrics_update(&mctx->sm->server_stats[mctx->server_idx],
 			   g204_time);
 	// drop it, clean up
@@ -440,7 +434,7 @@ static void on_ss_g204_event(struct bufferevent *bev, short events, void *ctx)
 #endif
 
 	if (events & BEV_EVENT_TIMEOUT) {
-		pgs_logger_error(mctx->logger, "shadowsocks g204 timeout");
+		syslog2(LOG_ERR, "shadowsocks g204 timeout");
 		if (mctx)
 			PGS_FREE_METRICS_TASK(mctx);
 		return;
@@ -449,7 +443,7 @@ static void on_ss_g204_event(struct bufferevent *bev, short events, void *ctx)
 		// set connected
 		mctx->outbound->ready = true;
 		double connect_time = elapse(mctx->start_at);
-		pgs_logger_debug(mctx->logger, "connect: %f", connect_time);
+		syslog2(LOG_DEBUG, "connect: %f", connect_time);
 		mctx->sm->server_stats[mctx->server_idx].connect_delay =
 			connect_time;
 
@@ -465,7 +459,7 @@ static void on_ss_g204_event(struct bufferevent *bev, short events, void *ctx)
 		pgs_logger_debug(mctx->logger, "g204 req sent: %d", olen);
 	}
 	if (events & BEV_EVENT_ERROR)
-		pgs_logger_error(mctx->logger, "Error from bufferevent");
+		syslog2(LOG_ERR, "error bufferevent");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
 		if (mctx)
 			PGS_FREE_METRICS_TASK(mctx);
@@ -488,7 +482,7 @@ static void on_v2ray_tcp_g204_event(struct bufferevent *bev, short events,
 		pgs_outbound_ctx_v2ray_t *sctx = mctx->outbound->ctx;
 		mctx->outbound->ready = true;
 		double connect_time = elapse(mctx->start_at);
-		pgs_logger_debug(mctx->logger, "connect: %f", connect_time);
+		syslog2(LOG_DEBUG, "connect: %f", connect_time);
 		mctx->sm->server_stats[mctx->server_idx].connect_delay =
 			connect_time;
 
@@ -500,10 +494,10 @@ static void on_v2ray_tcp_g204_event(struct bufferevent *bev, short events,
 		bool ok = vmess_write_remote(&dummy,
 					     (const uint8_t *)g204_http_req,
 					     strlen(g204_http_req), &olen);
-		pgs_logger_debug(mctx->logger, "g204 req sent: %d", olen);
+		syslog2(LOG_DEBUG, "g204 req sent: %d", olen);
 	}
 	if (events & BEV_EVENT_ERROR)
-		pgs_logger_error(mctx->logger, "Error from bufferevent");
+		syslog2(LOG_ERR, "Error from bufferevent");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
 		if (mctx)
 			PGS_FREE_METRICS_TASK(mctx);
@@ -523,13 +517,13 @@ static void do_ws_remote_request(struct bufferevent *bev, void *ctx)
 
 	const pgs_config_ws_t *ws_config = config->extra;
 
-	pgs_logger_debug(mctx->logger, "do_ws_remote_request");
+	syslog2(LOG_DEBUG, "do_ws_remote_request");
 
 	pgs_ws_req(bufferevent_get_output(mctx->outbound->bev),
 		   ws_config->hostname, config->server_address,
 		   config->server_port, ws_config->path);
 
-	pgs_logger_debug(mctx->logger, "do_ws_remote_request done");
+	syslog2(LOG_DEBUG, "do_ws_remote_request done");
 }
 
 pgs_metrics_task_ctx_t *

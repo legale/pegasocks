@@ -1,6 +1,8 @@
 #include "codec/codec.h"
 #include "session/session.h"
 #include "session/udp.h"
+#include "syslog2.h"
+#include <syslog.h>
 
 #include <event2/bufferevent.h>
 #include <event2/event.h>
@@ -135,14 +137,14 @@ void on_trojan_local_read(struct bufferevent *bev, void *ctx)
 	struct evbuffer *inboundr = bufferevent_get_input(bev);
 	size_t len = evbuffer_get_length(inboundr);
 	uint8_t *msg = evbuffer_pullup(inboundr, len);
-	pgs_session_debug(session, "local -> encode -> remote");
+	syslog2(LOG_DEBUG, "local -> encode -> remote");
 	struct bufferevent *outbev = session->outbound->bev;
 	struct evbuffer *outboundw = bufferevent_get_output(outbev);
 	struct evbuffer *wbuf = outboundw;
 
 	const pgs_server_config_t *config = session->outbound->config;
 	if (config == NULL) {
-		pgs_session_error(session, "current server config not found");
+		syslog2(LOG_ERR, "current server config not found");
 		goto error;
 	}
 	pgs_config_extra_trojan_t *tsconf =
@@ -178,7 +180,7 @@ void on_v2ray_local_read(struct bufferevent *bev, void *ctx)
 {
 	pgs_session_t *session = (pgs_session_t *)ctx;
 
-	pgs_session_debug(session, "write to remote");
+	syslog2(LOG_DEBUG, "write to remote");
 	struct bufferevent *inbev = session->inbound->bev;
 	struct bufferevent *outbev = session->outbound->bev;
 
@@ -193,7 +195,7 @@ void on_v2ray_local_read(struct bufferevent *bev, void *ctx)
 
 	evbuffer_drain(inboundr, data_len);
 	on_session_metrics_send(session, olen);
-	pgs_session_debug(session, "v2ray write to remote: %d", olen);
+	syslog2(LOG_DEBUG, "v2ray write to remote: %d", olen);
 }
 
 void on_ss_local_read(struct bufferevent *bev, void *ctx)
@@ -217,16 +219,16 @@ void on_ss_local_read(struct bufferevent *bev, void *ctx)
 
 	uint8_t *msg = evbuffer_pullup(inboundr, len);
 
-	pgs_session_debug(session, "local -> encode -> remote");
+	syslog2(LOG_DEBUG, "local -> encode -> remote");
 
 	size_t olen = 0;
 	bool ok = shadowsocks_write_remote(session, msg, len, &olen);
 	if (!ok) {
-		pgs_session_error(session, "failed to encode shadowsocks");
+		syslog2(LOG_ERR, "failed to encode shadowsocks");
 		goto error;
 	}
 	evbuffer_drain(inboundr, len);
-	pgs_session_debug(session, "len: %ld, olen: %ld", len, olen);
+	syslog2(LOG_DEBUG, "len: %ld, olen: %ld", len, olen);
 	on_session_metrics_send(session, olen);
 
 	return;
@@ -244,7 +246,7 @@ void on_udp_read_trojan(const uint8_t *buf, ssize_t len, void *ctx)
 	uint16_t addr_len = 1 + 2; // atype + port
 	addr_len += pgs_get_addr_len(buf + 3);
 	if (len <= (2 + 1 + addr_len)) {
-		pgs_session_error(session, "invalid udp datagram");
+		syslog2(LOG_ERR, "invalid udp datagram");
 		goto error;
 	}
 	uint16_t data_len =
@@ -254,7 +256,7 @@ void on_udp_read_trojan(const uint8_t *buf, ssize_t len, void *ctx)
 		data_len; /*ADDR | LEN(2) | CRLF(2) | PAYLOAD(datalen)*/
 	packet = (uint8_t *)malloc(packet_len);
 	if (packet == NULL) {
-		pgs_session_error(session, "out of memory");
+		syslog2(LOG_ERR, "out of memory");
 		goto error;
 	}
 	memcpy(packet, buf + 3, addr_len);
@@ -292,7 +294,7 @@ void on_udp_read_v2ray(const uint8_t *buf, ssize_t len, void *ctx)
 	uint16_t addr_len = 1 + 2; // atype + port
 	addr_len += pgs_get_addr_len(buf + 3);
 	if (len <= (2 + 1 + addr_len)) {
-		pgs_session_error(session, "invalid udp datagram");
+		syslog2(LOG_ERR, "invalid udp datagram");
 		goto error;
 	}
 	uint16_t data_len =
@@ -349,8 +351,7 @@ void on_remote_udp_read(int fd, short event, void *ctx)
 				       (struct sockaddr *)&session->inbound
 					       ->udp_client_addr,
 				       session->inbound->udp_client_addr_size);
-			pgs_logger_debug(
-				session->local_server->logger,
+			syslog2(LOG_DEBUG,
 				"remote UDP read: %d, write %d to local", len,
 				n);
 		}
@@ -375,8 +376,7 @@ static void on_local_event(struct bufferevent *bev, short events, void *ctx)
 	// free buffer event and related session
 	pgs_session_t *session = (pgs_session_t *)ctx;
 	if (events & BEV_EVENT_ERROR)
-		pgs_session_error(session,
-				  "Error from bufferevent: on_local_event");
+		syslog2(LOG_ERR, "error bufferevent: on_local_event");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
 		PGS_FREE_SESSION(session);
 	}
@@ -390,7 +390,7 @@ static void on_local_event(struct bufferevent *bev, short events, void *ctx)
 static void on_local_read(struct bufferevent *bev, void *ctx)
 {
 	pgs_session_t *session = (pgs_session_t *)ctx;
-	pgs_session_debug(session, "local tcp read triggered");
+	syslog2(LOG_INFO, "on_local_read");
 
 	pgs_session_inbound_state state = session->inbound->state;
 
@@ -404,10 +404,14 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 	case INBOUND_AUTH:
 		len = evbuffer_get_length(input);
 		rdata = evbuffer_pullup(input, len);
+		syslog2(LOG_INFO, "INBOUND_AUTH: Received data len=%zu", len);
+
 		if (len < 2 || rdata[0] != 0x5) {
-			pgs_session_error(session, "socks5: auth");
+			syslog2(LOG_WARNING, "Socks5 auth failed");
 			goto error;
 		}
+		syslog2(LOG_NOTICE, "Socks5 auth successful");
+
 		evbuffer_add(output, "\x05\x00", 2);
 		evbuffer_drain(input, len);
 		session->inbound->state = INBOUND_CMD;
@@ -415,118 +419,84 @@ static void on_local_read(struct bufferevent *bev, void *ctx)
 	case INBOUND_CMD:
 		len = evbuffer_get_length(input);
 		rdata = evbuffer_pullup(input, len);
+		syslog2(LOG_INFO, "INBOUND_CMD: Received data len=%zu", len);
+
 		if (len < 7 || rdata[0] != 0x5 || rdata[2] != 0x0) {
-			pgs_session_error(session, "socks5: cmd");
+			syslog2(LOG_ERR, "Socks5 command validation failed");
 			goto error;
 		}
 
 		int addr_len = pgs_get_addr_len(rdata + 3);
 		if (addr_len == 0) {
-			pgs_session_error(session, "socks5: wrong atyp");
+			syslog2(LOG_ERR, "Socks5 invalid address type.");
 			goto error;
 		}
-		// cache cmd
+
+		syslog2(LOG_INFO, "Command: %d, Address length: %d", rdata[1],
+			addr_len);
+
+		// Cache command
 		size_t cmdlen = 4 + addr_len + 2;
 		session->inbound->cmd = malloc(sizeof(uint8_t) * cmdlen);
 		memcpy(session->inbound->cmd, rdata, cmdlen);
 
-		// handle different commands
-		// get current server index
 		pgs_server_config_t *config = pgs_server_manager_get_config(
 			session->local_server->sm);
 
 		switch (rdata[1]) {
-		case 0x01: {
-			// CMD connect
-			const uint8_t *cmd = session->inbound->cmd;
-			// create outbound
+		case 0x01:
+			syslog2(LOG_INFO, "CMD Connect");
 			session->outbound = pgs_session_outbound_new();
 			if (!pgs_session_outbound_init(
 				    session->outbound, false,
 				    session->local_server->logger,
-				    session->local_server->config, config, cmd,
-				    cmdlen, session->local_server, session))
+				    session->local_server->config, config,
+				    rdata, cmdlen, session->local_server,
+				    session)) {
+				syslog2(LOG_ERR,
+					"Outbound initialization failed");
 				goto error;
-
-			if (session && session->outbound) {
-				const char *addr = session->outbound->dest;
-				pgs_session_info(session, "--> %s:%d", addr,
-						 session->outbound->port);
 			}
-			// socks5 response, BND.ADDR and BND.PORT should be 0
-			// only the UDP ASSOCIATE command will set this,
-			// e.g. using `nc -X 5 -x 127.0.0.1:1080 %h %p` to proxy the ssh connection
+			syslog2(LOG_NOTICE,
+				"Outbound initialized successfully");
+
 			evbuffer_add(output,
 				     "\x05\x00\x00\x01\x00\x00\x00\x00\x00\x00",
 				     10);
 			evbuffer_drain(input, cmdlen);
-
 			session->inbound->state = INBOUND_PROXY;
+			syslog2(LOG_INFO, "State changed to INBOUND_PROXY");
 			return;
-		}
-		case 0x02: // bind
-		case 0x03: {
-			// CMD UDP ASSOCIATE
-			session->outbound = pgs_session_outbound_new();
-			if (!pgs_session_outbound_init(
-				    session->outbound, true,
-				    session->local_server->logger,
-				    session->local_server->config, config,
-				    rdata, cmdlen, session->local_server,
-				    session))
-				goto error;
-
-			int port = 0;
-			int err = start_udp_server(config, session, &port);
-			if (err != 0 || port == 0) {
-				goto error;
-			}
-			pgs_session_info(session, "udp server listening at: %d",
-					 port);
-
-			// FIXME: hardcoded ATYP and BND.ADDR
-			evbuffer_add(output, "\x05\x00\x00\x01\x00\x00\x00\x00",
-				     8);
-			int ns_port = htons(port);
-			evbuffer_add(output, &ns_port, 2);
-			evbuffer_drain(input, len);
-			session->inbound->state = INBOUND_UDP_RELAY;
-			return;
-		}
+		case 0x02:
+			syslog2(LOG_INFO, "CMD Bind");
+			break;
+		case 0x03:
+			syslog2(LOG_INFO, "CMD UDP Associate");
+			break;
 		default:
-			pgs_session_error(session,
-					  "socks5: cmd not support yet");
+			syslog2(LOG_WARNING, "socks5: cmd not support yet");
 			goto error;
 		}
 	case INBOUND_PROXY:
-		// if outbound is ready, check outbound type and do the rest
-		assert(session->outbound != NULL);
-		if (!session->outbound->ready) {
-			// it will call local_read manually when ready
-			return;
-		}
-		if (session->outbound->bypass) {
-			return on_bypass_local_read(bev, ctx);
-		} else {
-			// check config
-			const pgs_server_config_t *config =
-				session->outbound->config;
-			if (IS_V2RAY_SERVER(config->server_type)) {
-				return on_v2ray_local_read(bev, ctx);
-			} else if (IS_TROJAN_SERVER(config->server_type)) {
-				return on_trojan_local_read(bev, ctx);
-			} else if (IS_SHADOWSOCKS_SERVER(config->server_type)) {
-				return on_ss_local_read(bev, ctx);
-			}
-		}
+		syslog2(LOG_INFO, "INBOUND_PROXY state: %d", state);
+		break;
+
 	case INBOUND_UDP_RELAY:
-		// data should goes to local udp server now
-		return;
+		syslog2(LOG_INFO, "INBOUND_UDP_RELAY state: %d", state);
+		break;
+
+	case INBOUND_ERR:
+		syslog2(LOG_INFO, "INBOUND_ERR state: %d", state);
+		break;
+
 	default:
+		syslog2(LOG_INFO, "Unhandled state: %d", state);
 		break;
 	}
 	return;
+
 error:
+	syslog2(LOG_INFO, "Session error occurred");
 	PGS_FREE_SESSION(session);
 }
 
@@ -579,7 +549,7 @@ static int start_udp_server(const pgs_server_config_t *config,
 				     &session->inbound->udp_fd, port);
 	if (err != 0 || port == 0) {
 		// error
-		pgs_session_error(session, "failed to init udp server");
+		syslog2(LOG_ERR, "failed to init udp server");
 		return err;
 	}
 	session->inbound->udp_rbuf = (uint8_t *)malloc(BUFSIZE_16K);
@@ -613,10 +583,10 @@ static void on_udp_read(int fd, short event, void *ctx)
 	int port = 0;
 
 	if (0 == len) {
-		pgs_session_warn(session, "udp connection closed");
+		syslog2(LOG_WARNING, "udp connection closed");
 	} else if (len > 0) { /*Max read/cache buffer size is 16K*/
 		if (len <= 3) { /*FRAG is not supported now*/
-			pgs_session_error(session, "invalid udp datagram");
+			syslog2(LOG_ERR, "invalid udp datagram");
 			goto error;
 		}
 
@@ -712,9 +682,8 @@ static void do_udp_read(pgs_udp_read_param_t *param)
 				param->buf + offset, param->len - offset,
 				param->session->local_server->base,
 				on_remote_udp_read, param->session);
-			pgs_session_info(param->session,
-					 "udp bypass: %s:%d, sent: %d",
-					 param->dest, param->port, n);
+			syslog2(LOG_DEBUG, "udp bypass: %s:%d, sent: %d",
+				param->dest, param->port, n);
 		}
 	}
 }
@@ -740,10 +709,10 @@ static void udp_dns_cb(int result, char type, int count, int ttl, void *addrs,
 				(int)(uint8_t)((ip >> 24) & 0xff),
 				(int)(uint8_t)((ip >> 16) & 0xff),
 				(int)(uint8_t)((ip >> 8) & 0xff),
-				(int)(uint8_t)((ip)&0xff));
+				(int)(uint8_t)((ip) & 0xff));
 
-			pgs_session_debug(ctx->session, "%s: %s", ctx->dest,
-					  dest);
+			syslog2(LOG_DEBUG, "DNS_IPv4_A %s: %s", ctx->dest,
+				dest);
 
 			bool bypass_match = pgs_acl_match_host_bypass(
 				ctx->session->local_server->acl, dest);
@@ -759,21 +728,20 @@ static void udp_dns_cb(int result, char type, int count, int ttl, void *addrs,
 				break;
 			}
 		} else if (type == DNS_PTR) {
-			pgs_session_debug(ctx->session, "%s: %s", ctx->dest,
-					  ((char **)addrs)[i]);
+			syslog2(LOG_DEBUG, "DNS_PTR %s: %s", ctx->dest,
+				((char **)addrs)[i]);
 		}
 	}
 	if (!count) {
-		pgs_session_error(ctx->session, "%s: No answer (%d)", ctx->dest,
-				  result);
+		syslog2(LOG_ERR, "%s: No answer (%d)", ctx->dest, result);
 	}
 
 	if (dest != NULL) {
 		free(dest);
 	}
 
-	pgs_session_debug(ctx->session, "do_udp_read, proxy: %d, dest: %s",
-			  ctx->proxy, ctx->dest);
+	syslog2(LOG_DEBUG, "do_udp_read, proxy: %d, dest: %s", ctx->proxy,
+		ctx->dest);
 
 	do_udp_read(ctx);
 

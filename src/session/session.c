@@ -6,6 +6,7 @@
 #include "log.h"
 #include "session/udp.h"
 #include "session/session.h"
+#include "syslog2.h"
 
 #include <unistd.h>
 #include <assert.h>
@@ -62,6 +63,7 @@ void pgs_session_free(pgs_session_t *session)
 		char tm_start_str[20], tm_end_str[20];
 		PARSE_SESSION_TIMEVAL(tm_start_str, session->metrics->start);
 		PARSE_SESSION_TIMEVAL(tm_end_str, session->metrics->end);
+
 		if (session->inbound &&
 		    session->inbound->state != INBOUND_UDP_RELAY) {
 			bool is_ssl_reused = pgs_session_outbound_is_ssl_reused(
@@ -70,27 +72,49 @@ void pgs_session_free(pgs_session_t *session)
 			if (is_ssl_reused) {
 				prefix = "[REUSED]";
 			}
-			pgs_session_info(
-				session,
-				"%sconnection to %s:%d closed, start: %s, end: %s, send: %d, recv: %d",
-				prefix, session->outbound->dest,
-				session->outbound->port, tm_start_str,
-				tm_end_str, session->metrics->send,
-				session->metrics->recv);
+
+			if (session->metrics->send == 0 &&
+			    session->metrics->recv == 0) {
+				syslog2(LOG_WARNING,
+					"%sconnection to %s:%d closed, start: %s, end: %s, send: %d, recv: %d",
+					prefix, session->outbound->dest,
+					session->outbound->port, tm_start_str,
+					tm_end_str, session->metrics->send,
+					session->metrics->recv);
+			} else {
+				syslog2(LOG_INFO,
+					"%sconnection to %s:%d closed, start: %s, end: %s, send: %d, recv: %d",
+					prefix, session->outbound->dest,
+					session->outbound->port, tm_start_str,
+					tm_end_str, session->metrics->send,
+					session->metrics->recv);
+			}
+		} else {
+			syslog2(LOG_INFO, "Session does not involve TCP relay");
 		}
-		if (session->inbound)
+
+		if (session->inbound) {
+			syslog2(LOG_INFO, "Freeing inbound session");
 			pgs_session_inbound_free(session->inbound);
+		}
 
 		session->inbound = NULL;
 
+		syslog2(LOG_INFO, "Freeing outbound session");
 		pgs_session_outbound_free(session->outbound);
 	}
-	if (session->inbound)
+
+	if (session->inbound) {
+		syslog2(LOG_INFO, "Freeing inbound session (redundant check)");
 		pgs_session_inbound_free(session->inbound);
+	}
 
-	if (session->metrics)
+	if (session->metrics) {
+		syslog2(LOG_INFO, "Freeing metrics structure");
 		free(session->metrics);
+	}
 
+	syslog2(LOG_INFO, "Freeing session structure");
 	free(session);
 }
 
