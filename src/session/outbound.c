@@ -578,6 +578,10 @@ error:
 static void on_bypass_remote_event(struct bufferevent *bev, short events,
 				   void *ctx)
 {
+#ifdef USE_MBEDTLS
+	pgs_bev_ctx_t *bev_ctx = ctx;
+	ctx = bev_ctx->cb_ctx;
+#endif
 	pgs_session_t *session = (pgs_session_t *)ctx;
 
 	if (events & BEV_EVENT_CONNECTED) {
@@ -597,6 +601,10 @@ static void on_bypass_remote_event(struct bufferevent *bev, short events,
 
 static void on_bypass_remote_read(struct bufferevent *bev, void *ctx)
 {
+#ifdef USE_MBEDTLS
+	pgs_bev_ctx_t *bev_ctx = ctx;
+	ctx = bev_ctx->cb_ctx;
+#endif
 	pgs_session_t *session = (pgs_session_t *)ctx;
 	pgs_session_debug(session, "remote read triggered");
 	struct evbuffer *input = bufferevent_get_input(bev);
@@ -623,6 +631,10 @@ error:
 static void on_trojan_remote_event(struct bufferevent *bev, short events,
 				   void *ctx)
 {
+#ifdef USE_MBEDTLS
+	pgs_bev_ctx_t *bev_ctx = ctx;
+	ctx = bev_ctx->cb_ctx;
+#endif
 	pgs_session_t *session = (pgs_session_t *)ctx;
 
 	if (events & BEV_EVENT_CONNECTED) {
@@ -683,6 +695,10 @@ static void on_trojan_remote_event(struct bufferevent *bev, short events,
  */
 static void on_trojan_remote_read(struct bufferevent *bev, void *ctx)
 {
+#ifdef USE_MBEDTLS
+	pgs_bev_ctx_t *bev_ctx = ctx;
+	ctx = bev_ctx->cb_ctx;
+#endif
 	pgs_session_t *session = (pgs_session_t *)ctx;
 	pgs_session_debug(session, "remote read triggered");
 	struct evbuffer *output = bufferevent_get_output(bev);
@@ -797,6 +813,10 @@ error:
 static void on_v2ray_remote_event(struct bufferevent *bev, short events,
 				  void *ctx)
 {
+#ifdef USE_MBEDTLS
+	pgs_bev_ctx_t *bev_ctx = ctx;
+	ctx = bev_ctx->cb_ctx;
+#endif
 	pgs_session_t *session = (pgs_session_t *)ctx;
 
 	if (events & BEV_EVENT_CONNECTED) {
@@ -847,6 +867,10 @@ static void on_v2ray_remote_event(struct bufferevent *bev, short events,
 }
 static void on_v2ray_remote_read(struct bufferevent *bev, void *ctx)
 {
+#ifdef USE_MBEDTLS
+	pgs_bev_ctx_t *bev_ctx = ctx;
+	ctx = bev_ctx->cb_ctx;
+#endif
 	pgs_session_t *session = (pgs_session_t *)ctx;
 	pgs_session_debug(session, "remote read triggered");
 	const pgs_server_config_t *config = session->outbound->config;
@@ -968,6 +992,10 @@ static void on_v2ray_remote_read(struct bufferevent *bev, void *ctx)
  */
 static void on_ss_remote_event(struct bufferevent *bev, short events, void *ctx)
 {
+#ifdef USE_MBEDTLS
+	pgs_bev_ctx_t *bev_ctx = ctx;
+	ctx = bev_ctx->cb_ctx;
+#endif
 	pgs_session_t *session = (pgs_session_t *)ctx;
 
 	if (events & BEV_EVENT_CONNECTED) {
@@ -986,6 +1014,10 @@ static void on_ss_remote_event(struct bufferevent *bev, short events, void *ctx)
 
 static void on_ss_remote_read(struct bufferevent *bev, void *ctx)
 {
+#ifdef USE_MBEDTLS
+	pgs_bev_ctx_t *bev_ctx = ctx;
+	ctx = bev_ctx->cb_ctx;
+#endif
 	pgs_session_t *session = (pgs_session_t *)ctx;
 	pgs_session_debug(session, "ss remote read triggered");
 	struct evbuffer *input = bufferevent_get_input(bev);
