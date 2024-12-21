@@ -11,6 +11,7 @@ set(CONFIG_TEST_SOURCES
     pgs_config_test.c 
     ${CMAKE_SOURCE_DIR}/src/config.c
     ${CMAKE_SOURCE_DIR}/src/log.c
+    ${CMAKE_SOURCE_DIR}/src/syslog2.c
     ${CMAKE_SOURCE_DIR}/src/mpsc.c
     ${CMAKE_SOURCE_DIR}/src/utils.c
     ${CMAKE_SOURCE_DIR}/3rd-party/sha3.c

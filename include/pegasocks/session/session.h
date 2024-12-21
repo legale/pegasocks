@@ -10,15 +10,16 @@
 #include "inbound.h"
 #include "outbound.h"
 #include "utils.h"
+#include "syslog2.h"
 
 #define pgs_session_debug(session, ...)                                        \
-	pgs_logger_debug(session->local_server->logger, __VA_ARGS__)
+	syslog2(LOG_DEBUG, __VA_ARGS__)
 #define pgs_session_info(session, ...)                                         \
-	pgs_logger_info(session->local_server->logger, __VA_ARGS__)
+	syslog2(LOG_INFO, __VA_ARGS__)
 #define pgs_session_warn(session, ...)                                         \
-	pgs_logger_warn(session->local_server->logger, __VA_ARGS__)
+	syslog2(LOG_WARN, __VA_ARGS__)
 #define pgs_session_error(session, ...)                                        \
-	pgs_logger_error(session->local_server->logger, __VA_ARGS__)
+	syslog2(LOG_ERR, __VA_ARGS__)
 #define pgs_session_debug_buffer(session, buf, len)                            \
 	pgs_logger_debug_buffer(session->local_server->logger, buf, len)
 

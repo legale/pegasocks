@@ -412,6 +412,7 @@ bool pgs_session_trojan_outbound_init(
 	return true;
 
 error:
+	syslog2(LOG_ERR, "failed pgs_session_trojan_outbound_init");
 	if (fd != -1)
 		close(fd);
 	return false;

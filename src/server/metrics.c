@@ -193,7 +193,7 @@ get_metrics_g204_connect(int idx, const pgs_config_t *gconfig,
 					    config->server_address,
 					    config->server_port);
 
-	syslog2(LOG_INFO, "connect: %s:%d", config->server_address,
+	syslog2(LOG_INFO, "connect server: %s:%d", config->server_address,
 		config->server_port);
 
 	return mctx;
